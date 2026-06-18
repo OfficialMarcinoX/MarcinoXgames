@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MarcinoXGames</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* Slate 900 */
+            color: #f8fafc;
+            overflow-x: hidden;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #2563eb; }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .neon-text {
+            text-shadow: 0 0 10px rgba(59, 130, 246, 0.8), 0 0 20px rgba(59, 130, 246, 0.4);
+        }
+
+        #game-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 100;
+            background: #000;
+        }
+
+        /* Game UI Overlay */
+        #game-ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Let clicks pass through to canvas by default */
+            z-index: 101;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .interactive-ui {
+            pointer-events: auto;
+        }
+
+        /* Modals */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .badge-verified { color: #3b82f6; }
+        .badge-creator { color: #eab308; }
+        .badge-admin { color: #ef4444; }
+
+        /* AStudio Toolbar */
+        .studio-tool:hover { background: #334155; transform: scale(1.05); }
+        .studio-tool.active { border: 2px solid #3b82f6; background: #1e293b; }
+    </style>
+</head>
+<body>
+
+    <!-- Navigation -->
+    <nav id="main-nav" class="glass-panel sticky top-0 z-50 px-6 py-4 flex justify-between items-center hidden">
+        <div class="flex items-center gap-6">
+            <a href="#home" class="text-2xl font-bold text-blue-500 neon-text tracking-tighter">
+                <i class="fa-solid fa-gamepad mr-2"></i>MarcinoXGames
+            </a>
+            <a href="#home" class="hover:text-blue-400 font-semibold transition"><i class="fa-solid fa-house mr-1"></i> Gry</a>
+            <a href="#studio" class="hover:text-yellow-400 font-semibold transition"><i class="fa-solid fa-hammer mr-1"></i> AStudio</a>
+        </div>
+        <div class="flex items-center gap-4" id="nav-user-section">
+            <!-- Populated dynamically -->
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main id="app-content" class="min-h-screen p-6 hidden">
+        <!-- Views will be injected here -->
+    </main>
+
+    <!-- Fullscreen Game Container -->
+    <div id="game-container">
+        <canvas id="game-canvas" class="w-full h-full block"></canvas>
+        <div id="game-ui">
+            <!-- Top Left: Game Info & Leave Hint -->
+            <div class="p-4 interactive-ui text-sm text-gray-300 drop-shadow-md">
+                <p><kbd class="bg-gray-800 px-1 rounded border border-gray-600">ESC</kbd> Menu | <kbd class="bg-gray-800 px-1 rounded border border-gray-600">TAB</kbd> Gracze</p>
+                <h2 id="in-game-title" class="text-xl font-bold text-white mt-1">Ładowanie gry...</h2>
+            </div>
+
+            <!-- TAB Menu (Player List) -->
+            <div id="tab-menu" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/3 bg-gray-900/90 border border-gray-700 rounded-lg shadow-2xl interactive-ui p-4">
+                <h3 class="text-lg font-bold border-b border-gray-700 pb-2 mb-2">Lista graczy</h3>
+                <ul id="tab-player-list" class="space-y-2 max-h-64 overflow-y-auto"></ul>
+            </div>
+
+            <!-- ESC Menu -->
+            <div id="esc-menu" class="hidden absolute top-0 left-0 w-full h-full bg-black/80 interactive-ui flex flex-col items-center justify-center">
+                <h1 class="text-4xl font-bold mb-8 neon-text">Menu Gry</h1>
+                <div class="flex flex-col gap-4 w-64">
+                    <button onclick="GameUI.resumeGame()" class="bg-blue-600 hover:bg-blue-500 py-3 rounded font-bold text-lg transition">(E) Wróć do gry</button>
+                    <button onclick="GameEngine.resetCharacter()" class="bg-yellow-600 hover:bg-yellow-500 py-3 rounded font-bold text-lg transition">(R) Reset Postaci</button>
+                    <button onclick="GameUI.leaveGame()" class="bg-red-600 hover:bg-red-500 py-3 rounded font-bold text-lg transition">(L) Wyjdź z gry</button>
+                    <button onclick="GameUI.showReportModal()" class="bg-gray-700 hover:bg-gray-600 py-3 rounded font-bold text-lg transition mt-4">Zgłoś nadużycie</button>
+                </div>
+            </div>
+
+            <!-- Chat Box (Bottom Left) -->
+            <div id="game-chat" class="absolute bottom-4 left-4 w-80 h-64 bg-black/50 border border-gray-700 rounded interactive-ui flex flex-col">
+                <div id="chat-messages" class="flex-1 overflow-y-auto p-2 text-sm space-y-1 flex flex-col-reverse">
+                    <!-- Messages go here -->
+                </div>
+                <div class="p-2 border-t border-gray-700 bg-black/60 flex">
+                    <input type="text" id="chat-input" class="w-full bg-transparent text-white outline-none" placeholder="Napisz wiadomość...">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Modal Container -->
+    <div id="global-modal" class="hidden"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, query, addDoc, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Environment Variables
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'marcinox-games-dev';
+        const firebaseConfigStr = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+        let firebaseConfig;
+        try {
+            firebaseConfig = JSON.parse(firebaseConfigStr);
+        } catch (e) {
+            console.warn("Invalid Firebase config, falling back to empty.");
+            firebaseConfig = {};
+        }
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // Core State
+        const AppState = {
+            user: null, // Full user document
+            allUsers: {}, // Cache for usernames/badges
+            currentGameId: null,
+            isAdminRoute: false
+        };
+
+        // Paths strictly adhering to rules
+        const DB_PATHS = {
+            users: `artifacts/${appId}/public/data/users`,
+            games: `artifacts/${appId}/public/data/games`,
+            reports: `artifacts/${appId}/public/data/reports`,
+            sessions: `artifacts/${appId}/public/data/sessions`
+        };
+
+        const Utils = {
+            showModal: (html) => {
+                const m = document.getElementById('global-modal');
+                m.innerHTML = `<div class="modal-overlay" onclick="if(event.target===this) Utils.closeModal()">${html}</div>`;
+                m.classList.remove('hidden');
+            },
+            closeModal: () => {
+                document.getElementById('global-modal').classList.add('hidden');
+            },
+            showMessage: (title, message) => {
+                Utils.showModal(`
+                    <div class="bg-gray-800 p-6 rounded-lg max-w-sm w-full text-center border border-gray-700 shadow-xl">
+                        <h2 class="text-xl font-bold mb-4">${title}</h2>
+                        <p class="mb-6 text-gray-300">${message}</p>
+                        <button onclick="Utils.closeModal()" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded font-bold w-full transition">OK</button>
+                    </div>
+                `);
+            },
+            escapeHTML: (str) => {
+                const p = document.createElement('p');
+                p.textContent = str;
+                return p.innerHTML;
+            },
+            getBadgesHTML: (userDoc) => {
+                if (!userDoc) return '';
+                let html = '';
+                if (userDoc.badges?.includes('verified')) html += '<i class="fa-solid fa-circle-check badge-verified ml-1" title="Zweryfikowany"></i>';
+                if (userDoc.badges?.includes('creator')) html += '<i class="fa-solid fa-shield-halved badge-creator ml-1" title="Twórca AStudio"></i>';
+                if (userDoc.role === 'admin') html += '<i class="fa-solid fa-hammer badge-admin ml-1" title="Administrator"></i>';
+                return html;
+            }
+        };
+
+        async function authenticateUser() {
+            try {
+                // Secret Admin Route Hack
+                if (window.location.hash.includes('#admin_hack')) {
+                    AppState.isAdminRoute = true;
+                }
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                
+                const uid = auth.currentUser.uid;
+                const userRef = doc(db, DB_PATHS.users, uid);
+                const userSnap = await getDoc(userRef);
+
+                if (userSnap.exists()) {
+                    AppState.user = { id: uid, ...userSnap.data() };
+                    checkBanStatus();
+                } else {
+                    // New user setup
+                    Utils.showModal(`
+                        <div class="bg-gray-800 p-8 rounded-xl max-w-md w-full border border-gray-700">
+                            <h2 class="text-2xl font-bold mb-4 text-blue-400">Witaj w MarcinoXGames!</h2>
+                            <p class="mb-4 text-gray-300">Wybierz swój unikalny nick w grze.</p>
+                            <input type="text" id="new-username" placeholder="Twój Nick" class="w-full bg-gray-900 border border-gray-600 rounded p-3 mb-4 text-white focus:border-blue-500 outline-none">
+                            <button onclick="window.saveNewUser('${uid}')" class="bg-blue-600 hover:bg-blue-500 w-full py-3 rounded font-bold transition">Zapisz i Graj</button>
+                        </div>
+                    `);
+                    return; // Wait for user to save
+                }
+
+                // Grant admin if hack used
+                if (AppState.isAdminRoute && AppState.user.role !== 'admin') {
+                    await updateDoc(userRef, { 
+                        role: 'admin', 
+                        badges: [...(AppState.user.badges||[]), 'creator', 'verified'] 
+                    });
+                    AppState.user.role = 'admin';
+                    Utils.showMessage('Sukces', 'Przyznano uprawnienia Administratora.');
+                }
+
+                initializeAppUI();
+                
+                // Cache users for quick lookups
+                onSnapshot(collection(db, DB_PATHS.users), (snapshot) => {
+                    snapshot.forEach(doc => {
+                        AppState.allUsers[doc.id] = doc.data();
+                    });
+                    updateNavUI();
+                });
+
+            } catch (error) {
+                console.error("Auth error:", error);
+                Utils.showMessage("Błąd Autoryzacji", "Nie udało się zalogować do platformy.");
+            }
+        }
+
+        window.saveNewUser = async (uid) => {
+            const username = document.getElementById('new-username').value.trim();
+            if (username.length < 3) {
+                alert("Nick musi mieć minimum 3 znaki."); // Replaced by UI message in real app, but constrained here
+                return;
+            }
+            const userData = {
+                username: username,
+                role: 'player',
+                badges: [],
+                friends: [],
+                warnings: 0,
+                isBanned: false,
+                banReason: '',
+                banUntil: null,
+                createdAt: serverTimestamp()
+            };
+            await setDoc(doc(db, DB_PATHS.users, uid), userData);
+            AppState.user = { id: uid, ...userData };
+            Utils.closeModal();
+            initializeAppUI();
+        };
+
+        function checkBanStatus() {
+            if (!AppState.user) return false;
+            if (AppState.user.isBanned) {
+                if (AppState.user.banUntil && new Date(AppState.user.banUntil) < new Date()) {
+                    // Ban expired
+                    updateDoc(doc(db, DB_PATHS.users, AppState.user.id), { isBanned: false, warnings: 0 });
+                    AppState.user.isBanned = false;
+                    return false;
+                }
+                document.body.innerHTML = `
+                    <div class="h-screen w-screen bg-red-900 flex flex-col items-center justify-center text-white">
+                        <h1 class="text-6xl font-bold mb-4"><i class="fa-solid fa-ban"></i> KONTO ZABLOKOWANE</h1>
+                        <p class="text-xl mb-2">Twoje konto zostało zbanowane przez Administratora.</p>
+                        <p class="text-gray-300">Powód: ${AppState.user.banReason || 'Naruszenie regulaminu / 3 ostrzeżenia (Automod)'}</p>
+                        ${AppState.user.banUntil ? `<p class="mt-4 font-bold">Ban wygasa: ${new Date(AppState.user.banUntil).toLocaleString()}</p>` : '<p class="mt-4 font-bold">Ban permanentny.</p>'}
+                    </div>
+                `;
+                return true;
+            }
+            return false;
+        }
+
+        function initializeAppUI() {
+            if(checkBanStatus()) return;
+            document.getElementById('main-nav').classList.remove('hidden');
+            document.getElementById('app-content').classList.remove('hidden');
+            updateNavUI();
+            handleRoute();
+            window.addEventListener('hashchange', handleRoute);
+        }
+
+        function updateNavUI() {
+            if (!AppState.user) return;
+            const nav = document.getElementById('nav-user-section');
+            let adminBtn = AppState.user.role === 'admin' ? `<a href="#admin" class="bg-red-600 hover:bg-red-500 px-3 py-1 rounded font-bold text-sm transition"><i class="fa-solid fa-shield"></i> Admin Panel</a>` : '';
+            
+            nav.innerHTML = `
+                ${adminBtn}
+                <a href="#profile/${AppState.user.id}" class="flex items-center gap-2 hover:bg-gray-800 p-2 rounded transition">
+                    <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold">${AppState.user.username.charAt(0).toUpperCase()}</div>
+                    <span class="font-bold">${Utils.escapeHTML(AppState.user.username)}${Utils.getBadgesHTML(AppState.user)}</span>
+                </a>
+                <a href="#settings" class="text-gray-400 hover:text-white transition"><i class="fa-solid fa-gear"></i></a>
+            `;
+        }
+
+        const Views = {
+            renderHome: async () => {
+                const content = document.getElementById('app-content');
+                content.innerHTML = `<h1 class="text-3xl font-bold mb-6">Odkryj Gry</h1><div id="games-grid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">Ładowanie gier...</div>`;
+                
+                const gamesRef = collection(db, DB_PATHS.games);
+                onSnapshot(gamesRef, (snapshot) => {
+                    const grid = document.getElementById('games-grid');
+                    if(!grid) return;
+                    grid.innerHTML = '';
+                    if(snapshot.empty) grid.innerHTML = '<p class="text-gray-400">Brak opublikowanych gier.</p>';
+                    
+                    snapshot.forEach(doc => {
+                        const game = doc.data();
+                        const creatorName = AppState.allUsers[game.creatorId]?.username || 'Nieznany';
+                        grid.innerHTML += `
+                            <div class="bg-gray-800 rounded-lg overflow-hidden border border-gray-700 hover:border-blue-500 transition cursor-pointer flex flex-col h-full" onclick="window.location.hash='#game/${doc.id}'">
+                                <div class="h-40 bg-gray-700 flex items-center justify-center relative">
+                                    <i class="fa-solid fa-gamepad text-5xl text-gray-500"></i>
+                                    <div class="absolute bottom-2 right-2 bg-black/60 px-2 py-1 rounded text-xs"><i class="fa-solid fa-users"></i> ${game.playersCount || 0}</div>
+                                </div>
+                                <div class="p-4 flex-1 flex flex-col">
+                                    <h3 class="font-bold text-lg mb-1 truncate">${Utils.escapeHTML(game.title)}</h3>
+                                    <p class="text-sm text-gray-400 mb-4 flex-1">${Utils.escapeHTML(game.description || 'Brak opisu')}</p>
+                                    <p class="text-xs text-gray-500">Twórca: <span class="text-blue-400">${Utils.escapeHTML(creatorName)}</span></p>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }, (error) => {
+                    console.error("Games fetch error:", error);
+                    document.getElementById('games-grid').innerHTML = '<p class="text-red-500">Błąd ładowania gier.</p>';
+                });
+            },
+
+            renderProfile: async (userId) => {
+                const content = document.getElementById('app-content');
+                content.innerHTML = '<div class="text-center mt-20"><i class="fa-solid fa-spinner fa-spin text-4xl"></i></div>';
+                
+                try {
+                    const profileSnap = await getDoc(doc(db, DB_PATHS.users, userId));
+                    if (!profileSnap.exists()) {
+                        content.innerHTML = '<h2>Nie znaleziono profilu</h2>';
+                        return;
+                    }
+                    const profile = profileSnap.data();
+                    const isMe = userId === AppState.user.id;
+                    
+                    content.innerHTML = `
+                        <div class="max-w-3xl mx-auto">
+                            <div class="bg-gray-800 rounded-xl p-8 flex flex-col md:flex-row items-center gap-8 border border-gray-700 relative overflow-hidden">
+                                <div class="absolute top-0 left-0 w-full h-32 bg-gradient-to-r from-blue-900 to-purple-900 opacity-50"></div>
+                                <div class="w-32 h-32 rounded-full bg-gray-700 border-4 border-gray-800 flex items-center justify-center text-5xl font-bold z-10 shadow-lg">
+                                    ${profile.username.charAt(0).toUpperCase()}
+                                </div>
+                                <div class="z-10 text-center md:text-left flex-1">
+                                    <h1 class="text-4xl font-bold mb-2 flex items-center justify-center md:justify-start gap-2">
+                                        ${Utils.escapeHTML(profile.username)}
+                                        <span class="text-2xl">${Utils.getBadgesHTML(profile)}</span>
+                                    </h1>
+                                    <p class="text-gray-400 mb-4">Dołączył: ${profile.createdAt ? new Date(profile.createdAt.toDate()).toLocaleDateString() : 'Dawno temu'}</p>
+                                    
+                                    ${!isMe ? `
+                                        <button class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-full font-bold transition shadow-lg shadow-blue-500/20">
+                                            <i class="fa-solid fa-user-plus mr-2"></i>Dodaj do znajomych
+                                        </button>
+                                        <button onclick="window.location.hash='#report_user/${userId}'" class="bg-gray-700 hover:bg-red-600 px-4 py-2 rounded-full font-bold transition ml-2 text-sm" title="Zgłoś gracza">
+                                            <i class="fa-solid fa-flag"></i>
+                                        </button>
+                                    ` : `
+                                        <a href="#settings" class="bg-gray-700 hover:bg-gray-600 px-6 py-2 rounded-full font-bold transition">Edytuj profil</a>
+                                    `}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } catch (e) {
+                    content.innerHTML = '<h2>Błąd ładowania profilu</h2>';
+                }
+            },
+
+            renderAdminPanel: async () => {
+                if(AppState.user.role !== 'admin') {
+                    window.location.hash = '#home';
+                    return;
+                }
+                const content = document.getElementById('app-content');
+                content.innerHTML = `
+                    <div class="max-w-6xl mx-auto">
+                        <h1 class="text-3xl font-bold mb-6 text-red-500"><i class="fa-solid fa-shield"></i> Panel Administratora</h1>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                            <!-- Akcje Mod -->
+                            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                                <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2">Narzędzia Moderacji</h2>
+                                <div class="space-y-4">
+                                    <div>
+                                        <label class="block text-sm mb-1 text-gray-400">Banowanie Gracza (Nick)</label>
+                                        <div class="flex gap-2">
+                                            <input type="text" id="admin-ban-nick" class="flex-1 bg-gray-900 border border-gray-600 rounded p-2 text-white" placeholder="Nick gracza">
+                                            <input type="number" id="admin-ban-days" class="w-24 bg-gray-900 border border-gray-600 rounded p-2 text-white" placeholder="Dni">
+                                            <button onclick="AdminLogic.banUser()" class="bg-red-600 hover:bg-red-500 px-4 py-2 rounded font-bold">Banuj</button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm mb-1 text-gray-400">Nadaj Verified Badge (Nick)</label>
+                                        <div class="flex gap-2">
+                                            <input type="text" id="admin-badge-nick" class="flex-1 bg-gray-900 border border-gray-600 rounded p-2 text-white" placeholder="Nick gracza">
+                                            <button onclick="AdminLogic.giveVerified()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold">Nadaj Odznakę</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Statystyki -->
+                            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                                <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2">Statystyki</h2>
+                                <p>Czekaj, system offline synchronizuje dane...</p>
+                            </div>
+                        </div>
+
+                        <!-- Zgłoszenia -->
+                        <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                            <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2 flex justify-between items-center">
+                                Zgłoszenia (Raporty) 
+                                <span class="text-sm bg-gray-700 px-2 py-1 rounded text-gray-300">Działa w trybie Offline/Async</span>
+                            </h2>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr class="bg-gray-900 text-gray-400 text-sm">
+                                            <th class="p-3">Data</th>
+                                            <th class="p-3">Typ</th>
+                                            <th class="p-3">Zgłaszający</th>
+                                            <th class="p-3">Cel</th>
+                                            <th class="p-3">Powód</th>
+                                            <th class="p-3">Kontekst (Chat)</th>
+                                            <th class="p-3">Akcja</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="admin-reports-list" class="divide-y divide-gray-700">
+                                        <tr><td colspan="7" class="p-3 text-center text-gray-500">Ładowanie zgłoszeń...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Fetch Reports
+                onSnapshot(collection(db, DB_PATHS.reports), (snapshot) => {
+                    const list = document.getElementById('admin-reports-list');
+                    if(!list) return;
+                    list.innerHTML = '';
+                    if(snapshot.empty) list.innerHTML = '<tr><td colspan="7" class="p-3 text-center text-green-500">Brak aktywnych zgłoszeń! Śpisz spokojnie.</td></tr>';
+                    
+                    snapshot.forEach(doc => {
+                        const r = doc.data();
+                        const rId = doc.id;
+                        let contextHTML = '-';
+                        if(r.chatContext && r.chatContext.length > 0) {
+                            contextHTML = `<button onclick='Utils.showMessage("Logi chatu (10s)", "${Utils.escapeHTML(JSON.stringify(r.chatContext.map(c=>c.sender+": "+c.text)))}")' class="text-blue-400 underline">Zobacz logi</button>`;
+                        }
+
+                        list.innerHTML += `
+                            <tr class="hover:bg-gray-700/50 transition">
+                                <td class="p-3 text-sm">${new Date(r.timestamp?.toDate() || Date.now()).toLocaleString()}</td>
+                                <td class="p-3"><span class="bg-red-900/50 text-red-400 border border-red-800 px-2 py-1 rounded text-xs font-bold uppercase">${r.type}</span></td>
+                                <td class="p-3">${Utils.escapeHTML(r.reporterName || 'Nieznany')}</td>
+                                <td class="p-3 text-yellow-400">${Utils.escapeHTML(r.targetId)}</td>
+                                <td class="p-3">${Utils.escapeHTML(r.reason)}</td>
+                                <td class="p-3">${contextHTML}</td>
+                                <td class="p-3">
+                                    <button onclick="AdminLogic.deleteReport('${rId}')" class="text-gray-400 hover:text-white mx-1" title="Usuń zgłoszenie"><i class="fa-solid fa-trash"></i></button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                });
+            }
+        };
+
+        window.AdminLogic = {
+            findUserIdByNick: (nick) => {
+                for (const [id, data] of Object.entries(AppState.allUsers)) {
+                    if (data.username.toLowerCase() === nick.toLowerCase()) return id;
+                }
+                return null;
+            },
+            banUser: async () => {
+                const nick = document.getElementById('admin-ban-nick').value;
+                const days = document.getElementById('admin-ban-days').value;
+                const uid = AdminLogic.findUserIdByNick(nick);
+                if(!uid) return Utils.showMessage('Błąd', 'Nie znaleziono gracza.');
+                
+                let banUntil = null;
+                if(days && parseInt(days) > 0) {
+                    banUntil = new Date(Date.now() + parseInt(days) * 24 * 60 * 60 * 1000).toISOString();
+                }
+                
+                await updateDoc(doc(db, DB_PATHS.users, uid), {
+                    isBanned: true,
+                    banReason: 'Zablokowany przez Administratora',
+                    banUntil: banUntil
+                });
+                Utils.showMessage('Sukces', `Gracz ${nick} został zbanowany.`);
+            },
+            giveVerified: async () => {
+                const nick = document.getElementById('admin-badge-nick').value;
+                const uid = AdminLogic.findUserIdByNick(nick);
+                if(!uid) return Utils.showMessage('Błąd', 'Nie znaleziono gracza.');
+                
+                const user = AppState.allUsers[uid];
+                let badges = user.badges || [];
+                if(!badges.includes('verified')) badges.push('verified');
+                
+                await updateDoc(doc(db, DB_PATHS.users, uid), { badges: badges });
+                Utils.showMessage('Sukces', `Odznaka nadana dla ${nick}.`);
+            },
+            deleteReport: async (id) => {
+                await deleteDoc(doc(db, DB_PATHS.reports, id));
+            }
+        };
+
+        function handleRoute() {
+            if(checkBanStatus()) return;
+            const hash = window.location.hash;
+            document.getElementById('app-content').classList.remove('hidden');
+            document.getElementById('game-container').style.display = 'none';
+            document.getElementById('main-nav').classList.remove('hidden');
+
+            if (GameEngine.isRunning) GameEngine.stop();
+            if (StudioEngine.isRunning) StudioEngine.stop();
+
+            if (hash === '' || hash === '#home') Views.renderHome();
+            else if (hash.startsWith('#profile/')) Views.renderProfile(hash.split('/')[1]);
+            else if (hash === '#settings') Views.renderHome(); // Placeholder
+            else if (hash === '#admin') Views.renderAdminPanel();
+            else if (hash === '#studio') StudioUI.init();
+            else if (hash.startsWith('#game/')) {
+                document.getElementById('app-content').classList.add('hidden');
+                document.getElementById('main-nav').classList.add('hidden');
+                document.getElementById('game-container').style.display = 'block';
+                GameEngine.start(hash.split('/')[1]);
+            }
+            else {
+                Views.renderHome();
+            }
+        }
+
+        const Automod = {
+            badWords: ['kurwa', 'jeb', 'spier', 'chuj', 'pizd', 'dziwk'],
+            checkMessage: (text) => {
+                const lower = text.toLowerCase();
+                if (lower.includes('http://') || lower.includes('https://') || lower.includes('.com') || lower.includes('.pl')) {
+                    return 'Zabronione linki';
+                }
+                for(let word of Automod.badWords) {
+                    if (lower.includes(word)) return 'Wulgaryzmy';
+                }
+                return null; // OK
+            },
+            issueWarning: async () => {
+                const userRef = doc(db, DB_PATHS.users, AppState.user.id);
+                const currentWarnings = (AppState.user.warnings || 0) + 1;
+                if (currentWarnings >= 3) {
+                    await updateDoc(userRef, { warnings: currentWarnings, isBanned: true, banReason: 'Automatyczny ban za 3 ostrzeżenia (Automod)' });
+                    window.location.reload();
+                } else {
+                    await updateDoc(userRef, { warnings: currentWarnings });
+                    AppState.user.warnings = currentWarnings;
+                }
+            }
+        };
+
+        const ChatManager = {
+            messages: [],
+            init: (gameId) => {
+                ChatManager.gameId = gameId;
+                ChatManager.messages = [];
+                const chatInput = document.getElementById('chat-input');
+                const chatBox = document.getElementById('chat-messages');
+                chatBox.innerHTML = '';
+                
+                chatInput.onkeydown = (e) => {
+                    if(e.key === 'Enter' && chatInput.value.trim() !== '') {
+                        ChatManager.sendMessage(chatInput.value.trim());
+                        chatInput.value = '';
+                    }
+                    e.stopPropagation(); // Prevent ThreeJS input
+                };
+            },
+            sendMessage: async (text) => {
+                const violation = Automod.checkMessage(text);
+                if (violation) {
+                    ChatManager.localSystemMessage(`Ostrzeżenie: Wykryto naruszenie regulaminu (${violation}). System zlicza ostrzeżenia!`);
+                    Automod.issueWarning();
+                    return;
+                }
+
+                const msg = {
+                    senderId: AppState.user.id,
+                    senderName: AppState.user.username,
+                    text: text,
+                    timestamp: Date.now()
+                };
+                
+                // Using Firestore to broadcast in the session
+                const msgRef = collection(db, `${DB_PATHS.sessions}/${ChatManager.gameId}/chat`);
+                await addDoc(msgRef, msg);
+            },
+            localSystemMessage: (text) => {
+                const box = document.getElementById('chat-messages');
+                box.innerHTML = `<div class="text-red-400 font-bold">[SYSTEM] ${Utils.escapeHTML(text)}</div>` + box.innerHTML;
+            },
+            receiveMessage: (msg) => {
+                ChatManager.messages.push(msg);
+                // Keep only last 50 locally
+                if(ChatManager.messages.length > 50) ChatManager.messages.shift();
+                
+                const box = document.getElementById('chat-messages');
+                const isMe = msg.senderId === AppState.user.id;
+                box.innerHTML = `<div><span class="font-bold ${isMe ? 'text-blue-400' : 'text-gray-300'}">[${Utils.escapeHTML(msg.senderName)}]</span>: <span class="text-white">${Utils.escapeHTML(msg.text)}</span></div>` + box.innerHTML;
+            },
+            getRecentContext: () => {
+                const tenSecAgo = Date.now() - 10000;
+                return ChatManager.messages.filter(m => m.timestamp >= tenSecAgo);
+            }
+        };
+
+        window.GameUI = {
+            init: () => {
+                document.addEventListener('keydown', GameUI.handleKeys);
+            },
+            cleanup: () => {
+                document.removeEventListener('keydown', GameUI.handleKeys);
+            },
+            handleKeys: (e) => {
+                if(!GameEngine.isRunning) return;
+                if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+                if (e.key === 'Escape') {
+                    const menu = document.getElementById('esc-menu');
+                    menu.classList.toggle('hidden');
+                    if(!menu.classList.contains('hidden')) document.exitPointerLock();
+                }
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    GameUI.toggleTabMenu(true);
+                }
+                
+                // Shortcuts inside ESC menu
+                if (!document.getElementById('esc-menu').classList.contains('hidden')) {
+                    if (e.key.toLowerCase() === 'l') GameUI.leaveGame();
+                    if (e.key.toLowerCase() === 'r') GameEngine.resetCharacter();
+                    if (e.key.toLowerCase() === 'e') GameUI.resumeGame();
+                }
+            },
+            resumeGame: () => {
+                document.getElementById('esc-menu').classList.add('hidden');
+                document.getElementById('game-canvas').requestPointerLock();
+            },
+            leaveGame: () => {
+                GameEngine.stop();
+                window.location.hash = '#home';
+            },
+            toggleTabMenu: (forceShow) => {
+                const menu = document.getElementById('tab-menu');
+                if (forceShow === true) {
+                    menu.classList.remove('hidden');
+                    GameUI.renderPlayerList();
+                    // Auto hide on keyup
+                    const hideTab = (upEvent) => {
+                        if(upEvent.key === 'Tab') {
+                            menu.classList.add('hidden');
+                            document.removeEventListener('keyup', hideTab);
+                        }
+                    };
+                    document.addEventListener('keyup', hideTab);
+                }
+            },
+            renderPlayerList: () => {
+                const list = document.getElementById('tab-player-list');
+                list.innerHTML = '';
+                // Include self
+                list.innerHTML += `<li class="flex justify-between items-center bg-gray-800 p-2 rounded">
+                    <span class="font-bold text-blue-400">${Utils.escapeHTML(AppState.user.username)} (Ty)</span>
+                </li>`;
+                
+                // Include other players in session
+                for (const [id, pdata] of Object.entries(GameEngine.players)) {
+                    const uData = AppState.allUsers[id] || { username: 'Gość' };
+                    list.innerHTML += `
+                        <li class="flex justify-between items-center bg-gray-800 p-2 rounded">
+                            <span class="font-bold">${Utils.escapeHTML(uData.username)}${Utils.getBadgesHTML(uData)}</span>
+                            <button onclick="window.open('#profile/${id}')" class="text-xs bg-blue-600 px-2 py-1 rounded">Profil</button>
+                        </li>
+                    `;
+                }
+            },
+            showReportModal: () => {
+                GameUI.resumeGame();
+                document.exitPointerLock();
+                
+                let playerOpts = '<option value="game">Gra/Serwer</option>';
+                for (const id of Object.keys(GameEngine.players)) {
+                    playerOpts += `<option value="${id}">${AppState.allUsers[id]?.username || id}</option>`;
+                }
+
+                Utils.showModal(`
+                    <div class="bg-gray-800 p-6 rounded-lg max-w-md w-full border border-gray-700">
+                        <h2 class="text-2xl font-bold mb-4 text-red-500">Zgłoś Nadużycie</h2>
+                        
+                        <label class="block text-sm mb-1 text-gray-400">Kogo/Co zgłaszasz?</label>
+                        <select id="report-target" class="w-full bg-gray-900 border border-gray-600 rounded p-2 mb-4 text-white">
+                            ${playerOpts}
+                        </select>
+
+                        <label class="block text-sm mb-1 text-gray-400">Powód</label>
+                        <select id="report-reason" class="w-full bg-gray-900 border border-gray-600 rounded p-2 mb-4 text-white">
+                            <option value="Wulgaryzmy/Spam">Wulgaryzmy / Spam</option>
+                            <option value="Cheaty/Exploity">Cheaty / Exploity</option>
+                            <option value="Obraza">Obraza / Nękanie</option>
+                            <option value="Inne">Inne (Opisz poniżej)</option>
+                        </select>
+                        
+                        <textarea id="report-desc" class="w-full bg-gray-900 border border-gray-600 rounded p-2 mb-4 text-white" rows="3" placeholder="Dodatkowe informacje..."></textarea>
+                        
+                        <div class="flex justify-end gap-2 mt-4">
+                            <button onclick="Utils.closeModal()" class="bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded">Anuluj</button>
+                            <button onclick="GameUI.submitReport()" class="bg-red-600 hover:bg-red-500 px-4 py-2 rounded font-bold">Wyślij Zgłoszenie</button>
+                        </div>
+                    </div>
+                `);
+            },
+            submitReport: async () => {
+                const target = document.getElementById('report-target').value;
+                const reason = document.getElementById('report-reason').value;
+                const desc = document.getElementById('report-desc').value;
+                
+                const report = {
+                    reporterId: AppState.user.id,
+                    reporterName: AppState.user.username,
+                    targetId: target,
+                    type: target === 'game' ? 'GAME_REPORT' : 'USER_REPORT',
+                    reason: reason + " - " + desc,
+                    timestamp: serverTimestamp(),
+                    chatContext: ChatManager.getRecentContext() // 10s chat history!
+                };
+
+                await addDoc(collection(db, DB_PATHS.reports), report);
+                Utils.closeModal();
+                ChatManager.localSystemMessage("Zgłoszenie zostało wysłane do administratorów.");
+            }
+        };
+
+        window.GameEngine = {
+            isRunning: false,
+            gameId: null,
+            scene: null,
+            camera: null,
+            renderer: null,
+            animationId: null,
+            players: {}, // id -> mesh
+            sessionUnsubs: [],
+            
+            // Player Physics & Control
+            playerBox: null,
+            keys: { w:false, a:false, s:false, d:false, space:false },
+            velocity: new THREE.Vector3(),
+            direction: new THREE.Vector3(),
+            canJump: false,
+            
+            start: async (gameId) => {
+                GameEngine.isRunning = true;
+                GameEngine.gameId = gameId;
+                GameUI.init();
+                ChatManager.init(gameId);
+                
+                document.getElementById('in-game-title').innerText = "Ładowanie środowiska...";
+
+                // Setup Three.js
+                const canvas = document.getElementById('game-canvas');
+                GameEngine.scene = new THREE.Scene();
+                GameEngine.scene.background = new THREE.Color(0x87CEEB); // Sky blue
+                GameEngine.scene.fog = new THREE.Fog(0x87CEEB, 10, 100);
+
+                GameEngine.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                
+                GameEngine.renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+                GameEngine.renderer.setSize(window.innerWidth, window.innerHeight);
+                GameEngine.renderer.shadowMap.enabled = true;
+
+                // Lighting
+                const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444);
+                hemiLight.position.set(0, 20, 0);
+                GameEngine.scene.add(hemiLight);
+                
+                const dirLight = new THREE.DirectionalLight(0xffffff);
+                dirLight.position.set(-3, 10, -10);
+                dirLight.castShadow = true;
+                GameEngine.scene.add(dirLight);
+
+                // Fetch Game Map
+                const gameDoc = await getDoc(doc(db, DB_PATHS.games, gameId));
+                if(gameDoc.exists() && gameDoc.data().mapData) {
+                    document.getElementById('in-game-title').innerText = gameDoc.data().title;
+                    GameEngine.loadMap(gameDoc.data().mapData);
+                } else {
+                    // Default Baseplate Map
+                    document.getElementById('in-game-title').innerText = "Domyślna Mapa";
+                    const geometry = new THREE.PlaneGeometry(200, 200);
+                    const material = new THREE.MeshStandardMaterial({ color: 0x4CAF50, roughness: 0.8 });
+                    const floor = new THREE.Mesh(geometry, material);
+                    floor.rotation.x = -Math.PI / 2;
+                    floor.receiveShadow = true;
+                    GameEngine.scene.add(floor);
+                }
+
+                // Setup Player
+                GameEngine.camera.position.set(0, 2, 5);
+                
+                // Controls
+                canvas.addEventListener('click', () => { if(GameEngine.isRunning) canvas.requestPointerLock(); });
+                document.addEventListener('mousemove', GameEngine.onMouseMove);
+                document.addEventListener('keydown', GameEngine.onKeyDown);
+                document.addEventListener('keyup', GameEngine.onKeyUp);
+                window.addEventListener('resize', GameEngine.onWindowResize);
+
+                // Multiplayer Sync (Hidden P2P via Firestore)
+                GameEngine.initMultiplayer();
+
+                GameEngine.animate();
+            },
+            
+            loadMap: (mapData) => {
+                // mapData expects array of {x,y,z, sx,sy,sz, color}
+                try {
+                    const objects = JSON.parse(mapData);
+                    objects.forEach(obj => {
+                        const geo = new THREE.BoxGeometry(obj.sx, obj.sy, obj.sz);
+                        const mat = new THREE.MeshStandardMaterial({ color: obj.color });
+                        const mesh = new THREE.Mesh(geo, mat);
+                        mesh.position.set(obj.x, obj.y, obj.z);
+                        mesh.castShadow = true;
+                        mesh.receiveShadow = true;
+                        GameEngine.scene.add(mesh);
+                    });
+                } catch(e) { console.error("Map parse error", e); }
+            },
+
+            resetCharacter: () => {
+                GameEngine.camera.position.set(0, 2, 0);
+                GameEngine.velocity.set(0,0,0);
+                GameUI.resumeGame();
+            },
+
+            onWindowResize: () => {
+                GameEngine.camera.aspect = window.innerWidth / window.innerHeight;
+                GameEngine.camera.updateProjectionMatrix();
+                GameEngine.renderer.setSize(window.innerWidth, window.innerHeight);
+            },
+
+            onMouseMove: (event) => {
+                if (document.pointerLockElement !== document.getElementById('game-canvas')) return;
+                GameEngine.camera.rotation.y -= event.movementX * 0.002;
+                GameEngine.camera.rotation.x -= event.movementY * 0.002;
+                GameEngine.camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, GameEngine.camera.rotation.x));
+                GameEngine.camera.rotation.order = 'YXZ'; // Important for FPS camera
+            },
+
+            onKeyDown: (e) => {
+                if(document.pointerLockElement !== document.getElementById('game-canvas')) return;
+                switch(e.code) {
+                    case 'KeyW': GameEngine.keys.w = true; break;
+                    case 'KeyA': GameEngine.keys.a = true; break;
+                    case 'KeyS': GameEngine.keys.s = true; break;
+                    case 'KeyD': GameEngine.keys.d = true; break;
+                    case 'Space': 
+                        if(GameEngine.canJump) { GameEngine.velocity.y += 10; GameEngine.canJump = false; }
+                        break;
+                }
+            },
+            onKeyUp: (e) => {
+                switch(e.code) {
+                    case 'KeyW': GameEngine.keys.w = false; break;
+                    case 'KeyA': GameEngine.keys.a = false; break;
+                    case 'KeyS': GameEngine.keys.s = false; break;
+                    case 'KeyD': GameEngine.keys.d = false; break;
+                }
+            },
+
+            initMultiplayer: () => {
+                const sessionRef = collection(db, `${DB_PATHS.sessions}/${GameEngine.gameId}/players`);
+                const chatRef = collection(db, `${DB_PATHS.sessions}/${GameEngine.gameId}/chat`);
+
+                // Listen to other players
+                const unsubPlayers = onSnapshot(sessionRef, (snapshot) => {
+                    snapshot.docChanges().forEach((change) => {
+                        const pid = change.doc.id;
+                        if (pid === AppState.user.id) return; // Skip self
+
+                        if (change.type === "added" || change.type === "modified") {
+                            const data = change.doc.data();
+                            if(Date.now() - data.lastSeen > 10000) return; // Ignore stale data
+                            
+                            if (!GameEngine.players[pid]) {
+                                // Create avatar representation
+                                const geo = new THREE.BoxGeometry(1, 2, 1);
+                                const mat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+                                const mesh = new THREE.Mesh(geo, mat);
+                                mesh.castShadow = true;
+                                GameEngine.scene.add(mesh);
+                                GameEngine.players[pid] = mesh;
+                                
+                                // Simple Nametag (optional visual enhancement, keeping simple)
+                                ChatManager.localSystemMessage(`Gracz ${data.username || pid} dołączył.`);
+                            }
+                            // Smoothly interpolate in a real engine, snap here
+                            GameEngine.players[pid].position.lerp(new THREE.Vector3(data.x, data.y, data.z), 0.5);
+                            GameEngine.players[pid].rotation.y = data.ry;
+                        }
+                        if (change.type === "removed") {
+                            if(GameEngine.players[pid]) {
+                                GameEngine.scene.remove(GameEngine.players[pid]);
+                                delete GameEngine.players[pid];
+                                ChatManager.localSystemMessage(`Gracz opuścił grę.`);
+                            }
+                        }
+                    });
+                });
+
+                // Listen to chat
+                let isFirstChatLoad = true;
+                const unsubChat = onSnapshot(chatRef, (snapshot) => {
+                    snapshot.docChanges().forEach((change) => {
+                        if (change.type === "added") {
+                            if(!isFirstChatLoad) ChatManager.receiveMessage(change.doc.data());
+                        }
+                    });
+                    isFirstChatLoad = false;
+                });
+
+                GameEngine.sessionUnsubs.push(unsubPlayers, unsubChat);
+                
+                // My sync loop (send my pos to Firestore every 100ms)
+                GameEngine.syncInterval = setInterval(async () => {
+                    if(!GameEngine.isRunning) return;
+                    await setDoc(doc(db, `${DB_PATHS.sessions}/${GameEngine.gameId}/players`, AppState.user.id), {
+                        username: AppState.user.username,
+                        x: GameEngine.camera.position.x,
+                        y: GameEngine.camera.position.y,
+                        z: GameEngine.camera.position.z,
+                        ry: GameEngine.camera.rotation.y,
+                        lastSeen: Date.now()
+                    });
+                }, 100);
+            },
+
+            stop: () => {
+                GameEngine.isRunning = false;
+                cancelAnimationFrame(GameEngine.animationId);
+                clearInterval(GameEngine.syncInterval);
+                GameEngine.sessionUnsubs.forEach(unsub => unsub());
+                document.exitPointerLock();
+                document.removeEventListener('mousemove', GameEngine.onMouseMove);
+                document.removeEventListener('keydown', GameEngine.onKeyDown);
+                document.removeEventListener('keyup', GameEngine.onKeyUp);
+                GameUI.cleanup();
+
+                // Remove me from session
+                if(GameEngine.gameId) {
+                    deleteDoc(doc(db, `${DB_PATHS.sessions}/${GameEngine.gameId}/players`, AppState.user.id)).catch(()=>{});
+                }
+                
+                // Cleanup WebGL
+                if(GameEngine.renderer) {
+                    GameEngine.renderer.dispose();
+                    GameEngine.scene.clear();
+                }
+            },
+
+            animate: () => {
+                if(!GameEngine.isRunning) return;
+                GameEngine.animationId = requestAnimationFrame(GameEngine.animate);
+
+                // Physics & Movement (Simple)
+                const time = performance.now();
+                if(GameEngine.prevTime) {
+                    const delta = (time - GameEngine.prevTime) / 1000;
+                    
+                    GameEngine.velocity.x -= GameEngine.velocity.x * 10.0 * delta;
+                    GameEngine.velocity.z -= GameEngine.velocity.z * 10.0 * delta;
+                    GameEngine.velocity.y -= 9.8 * 2.0 * delta; // 100.0 = mass
+
+                    GameEngine.direction.z = Number(GameEngine.keys.w) - Number(GameEngine.keys.s);
+                    GameEngine.direction.x = Number(GameEngine.keys.d) - Number(GameEngine.keys.a);
+                    GameEngine.direction.normalize(); // consistent movement in all directions
+
+                    const speed = 50.0;
+                    if (GameEngine.keys.w || GameEngine.keys.s) GameEngine.velocity.z -= GameEngine.direction.z * speed * delta;
+                    if (GameEngine.keys.a || GameEngine.keys.d) GameEngine.velocity.x -= GameEngine.direction.x * speed * delta;
+
+                    // Move camera relative to direction
+                    const euler = new THREE.Euler(0, GameEngine.camera.rotation.y, 0, 'YXZ');
+                    const vec = new THREE.Vector3(GameEngine.velocity.x * delta, 0, GameEngine.velocity.z * delta);
+                    vec.applyEuler(euler);
+                    
+                    GameEngine.camera.position.add(vec);
+                    GameEngine.camera.position.y += (GameEngine.velocity.y * delta);
+
+                    if (GameEngine.camera.position.y < 2) {
+                        GameEngine.velocity.y = 0;
+                        GameEngine.camera.position.y = 2;
+                        GameEngine.canJump = true;
+                    }
+                }
+                GameEngine.prevTime = time;
+
+                GameEngine.renderer.render(GameEngine.scene, GameEngine.camera);
+            }
+        };
+
+        window.StudioUI = {
+            init: () => {
+                const content = document.getElementById('app-content');
+                content.innerHTML = `
+                    <div class="flex flex-col h-[calc(100vh-80px)] border-t border-gray-700 relative">
+                        <!-- Toolbar -->
+                        <div class="bg-gray-800 p-2 flex items-center gap-2 border-b border-gray-700 z-10">
+                            <h2 class="text-xl font-bold text-yellow-400 mr-4"><i class="fa-solid fa-hammer"></i> AStudio</h2>
+                            
+                            <button onclick="StudioEngine.addPart()" class="studio-tool bg-gray-700 p-2 rounded transition" title="Dodaj Klocek (Part)"><i class="fa-solid fa-cube"></i> Part</button>
+                            <input type="color" id="studio-color" value="#4CAF50" class="w-8 h-8 rounded cursor-pointer" title="Kolor klocka">
+                            
+                            <div class="w-px h-6 bg-gray-600 mx-2"></div>
+                            
+                            <button onclick="StudioEngine.setMode('translate')" class="studio-tool bg-gray-700 p-2 rounded transition" title="Przesuń"><i class="fa-solid fa-arrows-up-down-left-right"></i></button>
+                            <button onclick="StudioEngine.setMode('scale')" class="studio-tool bg-gray-700 p-2 rounded transition" title="Skaluj"><i class="fa-solid fa-maximize"></i></button>
+                            <button onclick="StudioEngine.deleteSelected()" class="studio-tool bg-red-900/50 text-red-400 hover:bg-red-600 hover:text-white p-2 rounded transition" title="Usuń (Del)"><i class="fa-solid fa-trash"></i></button>
+                            
+                            <div class="w-px h-6 bg-gray-600 mx-2"></div>
+                            <button onclick="StudioEngine.openScriptEditor()" class="studio-tool bg-gray-700 p-2 rounded transition text-blue-400" title="LUA Script"><i class="fa-brands fa-lua"></i> Skrypt (WIP)</button>
+                            
+                            <div class="flex-1"></div>
+                            <button onclick="StudioUI.showPublishModal()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold shadow-lg"><i class="fa-solid fa-cloud-arrow-up"></i> Publikuj Grę</button>
+                        </div>
+                        
+                        <!-- Studio Canvas -->
+                        <div class="flex-1 relative bg-gray-900" id="studio-container">
+                            <canvas id="studio-canvas" class="w-full h-full block"></canvas>
+                        </div>
+                    </div>
+                `;
+                StudioEngine.start();
+            },
+            showPublishModal: () => {
+                Utils.showModal(`
+                    <div class="bg-gray-800 p-6 rounded-lg max-w-md w-full border border-gray-700">
+                        <h2 class="text-2xl font-bold mb-4 text-blue-400">Publikacja Gry</h2>
+                        
+                        <label class="block text-sm mb-1 text-gray-400">Nazwa Gry</label>
+                        <input type="text" id="pub-title" class="w-full bg-gray-900 border border-gray-600 rounded p-2 mb-4 text-white" placeholder="Super Gra">
+                        
+                        <label class="block text-sm mb-1 text-gray-400">Opis</label>
+                        <textarea id="pub-desc" class="w-full bg-gray-900 border border-gray-600 rounded p-2 mb-4 text-white" rows="3" placeholder="Opis twojej gry..."></textarea>
+                        
+                        <div class="flex justify-end gap-2 mt-4">
+                            <button onclick="Utils.closeModal()" class="bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded">Anuluj</button>
+                            <button onclick="StudioEngine.publish()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold">Publikuj</button>
+                        </div>
+                    </div>
+                `);
+            }
+        };
+
+        window.StudioEngine = {
+            isRunning: false,
+            scene: null, camera: null, renderer: null,
+            objects: [], selectedObject: null,
+            raycaster: new THREE.Raycaster(), mouse: new THREE.Vector2(),
+            mode: 'translate',
+            
+            start: () => {
+                StudioEngine.isRunning = true;
+                const canvas = document.getElementById('studio-canvas');
+                const container = document.getElementById('studio-container');
+                
+                StudioEngine.scene = new THREE.Scene();
+                StudioEngine.scene.background = new THREE.Color(0x1e293b);
+                StudioEngine.scene.add(new THREE.GridHelper(100, 100, 0x475569, 0x334155));
+
+                StudioEngine.camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
+                StudioEngine.camera.position.set(10, 10, 10);
+                StudioEngine.camera.lookAt(0, 0, 0);
+
+                StudioEngine.renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+                StudioEngine.renderer.setSize(container.clientWidth, container.clientHeight);
+
+                const light = new THREE.DirectionalLight(0xffffff, 1);
+                light.position.set(5, 10, 5);
+                StudioEngine.scene.add(light);
+                StudioEngine.scene.add(new THREE.AmbientLight(0x404040));
+
+                canvas.addEventListener('pointerdown', StudioEngine.onPointerDown);
+                window.addEventListener('resize', () => {
+                    if(!StudioEngine.isRunning) return;
+                    StudioEngine.camera.aspect = container.clientWidth / container.clientHeight;
+                    StudioEngine.camera.updateProjectionMatrix();
+                    StudioEngine.renderer.setSize(container.clientWidth, container.clientHeight);
+                });
+
+                StudioEngine.animate();
+            },
+            addPart: () => {
+                const color = document.getElementById('studio-color').value;
+                const geo = new THREE.BoxGeometry(2, 2, 2);
+                const mat = new THREE.MeshStandardMaterial({ color: color });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(0, 1, 0);
+                StudioEngine.scene.add(mesh);
+                StudioEngine.objects.push(mesh);
+            },
+            onPointerDown: (e) => {
+                const rect = document.getElementById('studio-canvas').getBoundingClientRect();
+                StudioEngine.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                StudioEngine.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+                
+                StudioEngine.raycaster.setFromCamera(StudioEngine.mouse, StudioEngine.camera);
+                const intersects = StudioEngine.raycaster.intersectObjects(StudioEngine.objects);
+                
+                if(StudioEngine.selectedObject) StudioEngine.selectedObject.material.emissive.setHex(0x000000);
+                
+                if(intersects.length > 0) {
+                    StudioEngine.selectedObject = intersects[0].object;
+                    StudioEngine.selectedObject.material.emissive.setHex(0x333333); // Highlight
+                    
+                    // Super basic movement simulation for POC (Click to move up slightly to show interaction)
+                    if(StudioEngine.mode === 'translate') StudioEngine.selectedObject.position.y += 1;
+                    if(StudioEngine.mode === 'scale') StudioEngine.selectedObject.scale.addScalar(0.5);
+                } else {
+                    StudioEngine.selectedObject = null;
+                }
+            },
+            deleteSelected: () => {
+                if(StudioEngine.selectedObject) {
+                    StudioEngine.scene.remove(StudioEngine.selectedObject);
+                    StudioEngine.objects = StudioEngine.objects.filter(o => o !== StudioEngine.selectedObject);
+                    StudioEngine.selectedObject = null;
+                }
+            },
+            setMode: (mode) => { StudioEngine.mode = mode; },
+            openScriptEditor: () => {
+                if(!StudioEngine.selectedObject) return Utils.showMessage('Błąd', 'Wybierz klocek, aby dodać skrypt!');
+                Utils.showMessage('Edytor Lua (Symulacja)', 'W pełnej wersji wpiszesz tu kod Lua. W tej wersji dodamy obracanie się obiektu.');
+                // Simulate attaching a script behavior
+                StudioEngine.selectedObject.userData.isSpinning = true;
+            },
+            publish: async () => {
+                const title = document.getElementById('pub-title').value || "Gra bez nazwy";
+                const desc = document.getElementById('pub-desc').value;
+                
+                // Serialize scene
+                const mapData = StudioEngine.objects.map(obj => ({
+                    x: obj.position.x, y: obj.position.y, z: obj.position.z,
+                    sx: obj.geometry.parameters.width * obj.scale.x,
+                    sy: obj.geometry.parameters.height * obj.scale.y,
+                    sz: obj.geometry.parameters.depth * obj.scale.z,
+                    color: obj.material.color.getHex()
+                }));
+
+                const gameData = {
+                    title, description: desc,
+                    creatorId: AppState.user.id,
+                    mapData: JSON.stringify(mapData),
+                    playersCount: 0,
+                    publishedAt: serverTimestamp()
+                };
+
+                await addDoc(collection(db, DB_PATHS.games), gameData);
+                
+                // Reward user with creator badge if they don't have it
+                const userRef = doc(db, DB_PATHS.users, AppState.user.id);
+                const badges = AppState.user.badges || [];
+                if(!badges.includes('creator')) {
+                    badges.push('creator');
+                    await updateDoc(userRef, { badges });
+                }
+
+                Utils.closeModal();
+                Utils.showMessage('Opublikowano!', 'Twoja gra jest teraz widoczna dla wszystkich.');
+                window.location.hash = '#home';
+            },
+            stop: () => {
+                StudioEngine.isRunning = false;
+                cancelAnimationFrame(StudioEngine.animationId);
+            },
+            animate: () => {
+                if(!StudioEngine.isRunning) return;
+                StudioEngine.animationId = requestAnimationFrame(StudioEngine.animate);
+                
+                // Slowly rotate camera around origin for studio feel
+                StudioEngine.camera.position.x = Math.sin(Date.now() * 0.0005) * 15;
+                StudioEngine.camera.position.z = Math.cos(Date.now() * 0.0005) * 15;
+                StudioEngine.camera.lookAt(0,0,0);
+
+                // Run simulated scripts
+                StudioEngine.objects.forEach(obj => {
+                    if(obj.userData.isSpinning) {
+                        obj.rotation.y += 0.05;
+                    }
+                });
+
+                StudioEngine.renderer.render(StudioEngine.scene, StudioEngine.camera);
+            }
+        };
+
+        // Initialize Everything
+        authenticateUser();
+
+    </script>
+</body>
+</html>
