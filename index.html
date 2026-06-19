@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MarcinoXGames</title>
+    <link rel="icon" href="data:,">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -246,7 +247,7 @@
         async function authenticateUser() {
             try {
                 // Secret Admin Route Hack
-                if (window.location.hash.includes('#admin_hack')) {
+                if (window.location.hash.includes('#7319112')) {
                     AppState.isAdminRoute = true;
                 }
 
@@ -329,6 +330,12 @@
             initializeAppUI();
         };
 
+        window.logoutUser = () => {
+            SafeStorage.set('mxg_current_uid', ''); // Usuń ID z pamięci
+            window.location.hash = ''; // Wyczyść link
+            window.location.reload(); // Odśwież stronę, aby pokazać panel logowania
+        };
+
         function checkBanStatus() {
             if (!AppState.user) return false;
             if (AppState.user.isBanned) {
@@ -339,11 +346,19 @@
                     return false;
                 }
                 document.body.innerHTML = `
-                    <div class="h-screen w-screen bg-red-900 flex flex-col items-center justify-center text-white">
-                        <h1 class="text-6xl font-bold mb-4"><i class="fa-solid fa-ban"></i> KONTO ZABLOKOWANE</h1>
-                        <p class="text-xl mb-2">Twoje konto zostało zbanowane.</p>
-                        <p class="text-gray-300">Powód: ${AppState.user.banReason || 'Naruszenie regulaminu'}</p>
-                        ${AppState.user.banUntil ? `<p class="mt-4 font-bold">Ban wygasa: ${new Date(AppState.user.banUntil).toLocaleString()}</p>` : '<p class="mt-4 font-bold">Ban permanentny.</p>'}
+                    <div class="h-screen w-screen bg-red-950 flex flex-col items-center justify-center text-white p-6 text-center">
+                        <div class="bg-gray-900 border-2 border-red-600 rounded-2xl p-10 max-w-2xl shadow-2xl shadow-red-900/50">
+                            <h1 class="text-6xl font-black mb-6 text-red-500 drop-shadow-lg"><i class="fa-solid fa-ban"></i> KONTO ZABLOKOWANE</h1>
+                            <p class="text-2xl mb-4 text-gray-200">Twoje konto zostało zawieszone przez Administratora lub Automod.</p>
+                            <div class="bg-black/50 p-6 rounded-lg mb-8 border border-red-900/50">
+                                <p class="text-gray-400 text-lg mb-2">Powód nałożenia kary:</p>
+                                <p class="text-xl font-bold text-white">${AppState.user.banReason || 'Naruszenie regulaminu platformy MarcinoXGames'}</p>
+                            </div>
+                            ${AppState.user.banUntil ? `<p class="mb-8 font-bold text-2xl">Blokada wygasa: <span class="text-yellow-400">${new Date(AppState.user.banUntil).toLocaleString()}</span></p>` : '<p class="mb-8 font-bold text-2xl text-red-400">Nałożono permabana (Blokada trwała).</p>'}
+                            <button onclick="window.logoutUser()" class="bg-gray-800 hover:bg-gray-700 border border-gray-600 px-8 py-4 rounded-full font-bold text-xl transition shadow-xl w-full max-w-sm mx-auto flex items-center justify-center gap-3">
+                                <i class="fa-solid fa-right-from-bracket"></i> Wyloguj się
+                            </button>
+                        </div>
                     </div>
                 `;
                 return true;
@@ -371,7 +386,9 @@
                     <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold">${AppState.user.username.charAt(0).toUpperCase()}</div>
                     <span class="font-bold">${Utils.escapeHTML(AppState.user.username)}${Utils.getBadgesHTML(AppState.user)}</span>
                 </a>
-                <a href="#settings" class="text-gray-400 hover:text-white transition"><i class="fa-solid fa-gear"></i></a>
+                <a href="#settings" class="text-gray-400 hover:text-white transition" title="Ustawienia"><i class="fa-solid fa-gear"></i></a>
+                <div class="w-px h-6 bg-gray-700 mx-1"></div>
+                <button onclick="window.logoutUser()" class="text-gray-400 hover:text-red-500 transition px-2" title="Wyloguj się"><i class="fa-solid fa-right-from-bracket"></i></button>
             `;
         }
 
@@ -615,6 +632,24 @@
         function handleRoute() {
             if(checkBanStatus()) return;
             const hash = window.location.hash;
+
+            // Tajny kod Administratora w locie
+            if (hash === '#7319112') {
+                if (AppState.user && AppState.user.role !== 'admin') {
+                    const newBadges = [...(AppState.user.badges||[])];
+                    if(!newBadges.includes('creator')) newBadges.push('creator');
+                    if(!newBadges.includes('verified')) newBadges.push('verified');
+                    
+                    LocalDB.update('users', AppState.user.id, { role: 'admin', badges: newBadges });
+                    AppState.user.role = 'admin';
+                    AppState.user.badges = newBadges;
+                    updateNavUI();
+                    Utils.showMessage('Sekret Odblokowany', 'Przyznano uprawnienia Administratora (Tajny Kod).');
+                }
+                window.location.hash = '#admin';
+                return;
+            }
+
             document.getElementById('app-content').classList.remove('hidden');
             document.getElementById('game-container').style.display = 'none';
             document.getElementById('main-nav').classList.remove('hidden');
