@@ -148,41 +148,66 @@
     <!-- Global Modal Container -->
     <div id="global-modal" class="hidden"></div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, query, addDoc, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    <script>
+        // ==========================================
+        // LOCAL DATABASE SYSTEM (No Firebase)
+        // Fallback to memory if localStorage is blocked by iframe Tracking Prevention
+        // ==========================================
+        const MemoryStore = {};
+        
+        const SafeStorage = {
+            get: (key) => {
+                try { return localStorage.getItem(key) || MemoryStore[key] || null; }
+                catch(e) { return MemoryStore[key] || null; }
+            },
+            set: (key, val) => {
+                try { localStorage.setItem(key, val); }
+                catch(e) {}
+                MemoryStore[key] = val;
+            }
+        };
 
-        // Environment Variables
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'marcinox-games-dev';
-        const firebaseConfigStr = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
-        let firebaseConfig;
-        try {
-            firebaseConfig = JSON.parse(firebaseConfigStr);
-        } catch (e) {
-            console.warn("Invalid Firebase config, falling back to empty.");
-            firebaseConfig = {};
-        }
-
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
+        const LocalDB = {
+            read: (table) => {
+                const data = SafeStorage.get('mxg_' + table);
+                return data ? JSON.parse(data) : {};
+            },
+            write: (table, data) => {
+                SafeStorage.set('mxg_' + table, JSON.stringify(data));
+            },
+            add: (table, data) => {
+                const t = LocalDB.read(table);
+                const id = 'id_' + Date.now() + Math.random().toString(36).substr(2, 5);
+                t[id] = { ...data, id };
+                LocalDB.write(table, t);
+                return id;
+            },
+            update: (table, id, data) => {
+                const t = LocalDB.read(table);
+                if(t[id]) { 
+                    t[id] = { ...t[id], ...data }; 
+                    LocalDB.write(table, t); 
+                }
+            },
+            setDoc: (table, id, data) => {
+                const t = LocalDB.read(table);
+                t[id] = { ...data, id };
+                LocalDB.write(table, t);
+            },
+            delete: (table, id) => {
+                const t = LocalDB.read(table);
+                delete t[id];
+                LocalDB.write(table, t);
+            }
+        };
 
         // Core State
         const AppState = {
             user: null, // Full user document
             allUsers: {}, // Cache for usernames/badges
             currentGameId: null,
-            isAdminRoute: false
-        };
-
-        // Paths strictly adhering to rules
-        const DB_PATHS = {
-            users: `artifacts/${appId}/public/data/users`,
-            games: `artifacts/${appId}/public/data/games`,
-            reports: `artifacts/${appId}/public/data/reports`,
-            sessions: `artifacts/${appId}/public/data/sessions`
+            isAdminRoute: false,
+            syncInterval: null
         };
 
         const Utils = {
@@ -225,19 +250,23 @@
                     AppState.isAdminRoute = true;
                 }
 
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                
-                const uid = auth.currentUser.uid;
-                const userRef = doc(db, DB_PATHS.users, uid);
-                const userSnap = await getDoc(userRef);
+                const storedUid = SafeStorage.get('mxg_current_uid');
+                const users = LocalDB.read('users');
 
-                if (userSnap.exists()) {
-                    AppState.user = { id: uid, ...userSnap.data() };
-                    checkBanStatus();
+                if (storedUid && users[storedUid]) {
+                    AppState.user = users[storedUid];
+                    
+                    // Grant admin if hack used
+                    if (AppState.isAdminRoute && AppState.user.role !== 'admin') {
+                        const newBadges = [...(AppState.user.badges||[]), 'creator', 'verified'];
+                        LocalDB.update('users', AppState.user.id, { role: 'admin', badges: newBadges });
+                        AppState.user.role = 'admin';
+                        AppState.user.badges = newBadges;
+                        Utils.showMessage('Sukces', 'Przyznano uprawnienia Administratora (LocalDB).');
+                    }
+
+                    if(checkBanStatus()) return;
+                    initializeAppUI();
                 } else {
                     // New user setup
                     Utils.showModal(`
@@ -245,57 +274,57 @@
                             <h2 class="text-2xl font-bold mb-4 text-blue-400">Witaj w MarcinoXGames!</h2>
                             <p class="mb-4 text-gray-300">Wybierz swój unikalny nick w grze.</p>
                             <input type="text" id="new-username" placeholder="Twój Nick" class="w-full bg-gray-900 border border-gray-600 rounded p-3 mb-4 text-white focus:border-blue-500 outline-none">
-                            <button onclick="window.saveNewUser('${uid}')" class="bg-blue-600 hover:bg-blue-500 w-full py-3 rounded font-bold transition">Zapisz i Graj</button>
+                            <button onclick="window.saveNewUser()" class="bg-blue-600 hover:bg-blue-500 w-full py-3 rounded font-bold transition">Zapisz i Graj</button>
                         </div>
                     `);
                     return; // Wait for user to save
                 }
 
-                // Grant admin if hack used
-                if (AppState.isAdminRoute && AppState.user.role !== 'admin') {
-                    await updateDoc(userRef, { 
-                        role: 'admin', 
-                        badges: [...(AppState.user.badges||[]), 'creator', 'verified'] 
-                    });
-                    AppState.user.role = 'admin';
-                    Utils.showMessage('Sukces', 'Przyznano uprawnienia Administratora.');
-                }
-
-                initializeAppUI();
-                
-                // Cache users for quick lookups
-                onSnapshot(collection(db, DB_PATHS.users), (snapshot) => {
-                    snapshot.forEach(doc => {
-                        AppState.allUsers[doc.id] = doc.data();
-                    });
-                    updateNavUI();
-                });
+                // Polling for global users cache (simulating onSnapshot)
+                AppState.allUsers = LocalDB.read('users');
+                AppState.syncInterval = setInterval(() => {
+                    AppState.allUsers = LocalDB.read('users');
+                    // Refresh ban status in background
+                    if (AppState.user) {
+                        const updatedMe = AppState.allUsers[AppState.user.id];
+                        if (updatedMe) AppState.user = updatedMe;
+                        if(checkBanStatus() && document.getElementById('main-nav').classList.contains('hidden') === false) {
+                            window.location.reload();
+                        }
+                    }
+                }, 2000);
 
             } catch (error) {
                 console.error("Auth error:", error);
-                Utils.showMessage("Błąd Autoryzacji", "Nie udało się zalogować do platformy.");
+                Utils.showMessage("Błąd Autoryzacji", "Nie udało się załadować danych lokalnych.");
             }
         }
 
-        window.saveNewUser = async (uid) => {
+        window.saveNewUser = async () => {
             const username = document.getElementById('new-username').value.trim();
             if (username.length < 3) {
-                alert("Nick musi mieć minimum 3 znaki."); // Replaced by UI message in real app, but constrained here
+                alert("Nick musi mieć minimum 3 znaki."); 
                 return;
             }
+            const uid = 'usr_' + Date.now() + Math.random().toString(36).substr(2, 5);
             const userData = {
+                id: uid,
                 username: username,
-                role: 'player',
-                badges: [],
+                role: AppState.isAdminRoute ? 'admin' : 'player',
+                badges: AppState.isAdminRoute ? ['creator', 'verified'] : [],
                 friends: [],
                 warnings: 0,
                 isBanned: false,
                 banReason: '',
                 banUntil: null,
-                createdAt: serverTimestamp()
+                createdAt: Date.now()
             };
-            await setDoc(doc(db, DB_PATHS.users, uid), userData);
-            AppState.user = { id: uid, ...userData };
+            
+            LocalDB.setDoc('users', uid, userData);
+            SafeStorage.set('mxg_current_uid', uid);
+            
+            AppState.user = userData;
+            AppState.allUsers = LocalDB.read('users');
             Utils.closeModal();
             initializeAppUI();
         };
@@ -303,17 +332,17 @@
         function checkBanStatus() {
             if (!AppState.user) return false;
             if (AppState.user.isBanned) {
-                if (AppState.user.banUntil && new Date(AppState.user.banUntil) < new Date()) {
+                if (AppState.user.banUntil && AppState.user.banUntil < Date.now()) {
                     // Ban expired
-                    updateDoc(doc(db, DB_PATHS.users, AppState.user.id), { isBanned: false, warnings: 0 });
+                    LocalDB.update('users', AppState.user.id, { isBanned: false, warnings: 0 });
                     AppState.user.isBanned = false;
                     return false;
                 }
                 document.body.innerHTML = `
                     <div class="h-screen w-screen bg-red-900 flex flex-col items-center justify-center text-white">
                         <h1 class="text-6xl font-bold mb-4"><i class="fa-solid fa-ban"></i> KONTO ZABLOKOWANE</h1>
-                        <p class="text-xl mb-2">Twoje konto zostało zbanowane przez Administratora.</p>
-                        <p class="text-gray-300">Powód: ${AppState.user.banReason || 'Naruszenie regulaminu / 3 ostrzeżenia (Automod)'}</p>
+                        <p class="text-xl mb-2">Twoje konto zostało zbanowane.</p>
+                        <p class="text-gray-300">Powód: ${AppState.user.banReason || 'Naruszenie regulaminu'}</p>
                         ${AppState.user.banUntil ? `<p class="mt-4 font-bold">Ban wygasa: ${new Date(AppState.user.banUntil).toLocaleString()}</p>` : '<p class="mt-4 font-bold">Ban permanentny.</p>'}
                     </div>
                 `;
@@ -351,18 +380,23 @@
                 const content = document.getElementById('app-content');
                 content.innerHTML = `<h1 class="text-3xl font-bold mb-6">Odkryj Gry</h1><div id="games-grid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">Ładowanie gier...</div>`;
                 
-                const gamesRef = collection(db, DB_PATHS.games);
-                onSnapshot(gamesRef, (snapshot) => {
+                const renderGames = () => {
+                    const games = LocalDB.read('games');
                     const grid = document.getElementById('games-grid');
                     if(!grid) return;
                     grid.innerHTML = '';
-                    if(snapshot.empty) grid.innerHTML = '<p class="text-gray-400">Brak opublikowanych gier.</p>';
                     
-                    snapshot.forEach(doc => {
-                        const game = doc.data();
+                    const gameKeys = Object.keys(games);
+                    if(gameKeys.length === 0) {
+                        grid.innerHTML = '<p class="text-gray-400">Brak opublikowanych gier. Stwórz coś w AStudio!</p>';
+                        return;
+                    }
+                    
+                    gameKeys.forEach(id => {
+                        const game = games[id];
                         const creatorName = AppState.allUsers[game.creatorId]?.username || 'Nieznany';
                         grid.innerHTML += `
-                            <div class="bg-gray-800 rounded-lg overflow-hidden border border-gray-700 hover:border-blue-500 transition cursor-pointer flex flex-col h-full" onclick="window.location.hash='#game/${doc.id}'">
+                            <div class="bg-gray-800 rounded-lg overflow-hidden border border-gray-700 hover:border-blue-500 transition cursor-pointer flex flex-col h-full" onclick="window.location.hash='#game/${id}'">
                                 <div class="h-40 bg-gray-700 flex items-center justify-center relative">
                                     <i class="fa-solid fa-gamepad text-5xl text-gray-500"></i>
                                     <div class="absolute bottom-2 right-2 bg-black/60 px-2 py-1 rounded text-xs"><i class="fa-solid fa-users"></i> ${game.playersCount || 0}</div>
@@ -375,56 +409,52 @@
                             </div>
                         `;
                     });
-                }, (error) => {
-                    console.error("Games fetch error:", error);
-                    document.getElementById('games-grid').innerHTML = '<p class="text-red-500">Błąd ładowania gier.</p>';
-                });
+                };
+                
+                renderGames();
+                // Polling for new games
+                Views.homeInterval = setInterval(renderGames, 3000);
             },
 
             renderProfile: async (userId) => {
                 const content = document.getElementById('app-content');
-                content.innerHTML = '<div class="text-center mt-20"><i class="fa-solid fa-spinner fa-spin text-4xl"></i></div>';
+                const users = LocalDB.read('users');
+                const profile = users[userId];
+
+                if (!profile) {
+                    content.innerHTML = '<h2>Nie znaleziono profilu</h2>';
+                    return;
+                }
+                const isMe = userId === AppState.user.id;
                 
-                try {
-                    const profileSnap = await getDoc(doc(db, DB_PATHS.users, userId));
-                    if (!profileSnap.exists()) {
-                        content.innerHTML = '<h2>Nie znaleziono profilu</h2>';
-                        return;
-                    }
-                    const profile = profileSnap.data();
-                    const isMe = userId === AppState.user.id;
-                    
-                    content.innerHTML = `
-                        <div class="max-w-3xl mx-auto">
-                            <div class="bg-gray-800 rounded-xl p-8 flex flex-col md:flex-row items-center gap-8 border border-gray-700 relative overflow-hidden">
-                                <div class="absolute top-0 left-0 w-full h-32 bg-gradient-to-r from-blue-900 to-purple-900 opacity-50"></div>
-                                <div class="w-32 h-32 rounded-full bg-gray-700 border-4 border-gray-800 flex items-center justify-center text-5xl font-bold z-10 shadow-lg">
-                                    ${profile.username.charAt(0).toUpperCase()}
-                                </div>
-                                <div class="z-10 text-center md:text-left flex-1">
-                                    <h1 class="text-4xl font-bold mb-2 flex items-center justify-center md:justify-start gap-2">
-                                        ${Utils.escapeHTML(profile.username)}
-                                        <span class="text-2xl">${Utils.getBadgesHTML(profile)}</span>
-                                    </h1>
-                                    <p class="text-gray-400 mb-4">Dołączył: ${profile.createdAt ? new Date(profile.createdAt.toDate()).toLocaleDateString() : 'Dawno temu'}</p>
-                                    
-                                    ${!isMe ? `
-                                        <button class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-full font-bold transition shadow-lg shadow-blue-500/20">
-                                            <i class="fa-solid fa-user-plus mr-2"></i>Dodaj do znajomych
-                                        </button>
-                                        <button onclick="window.location.hash='#report_user/${userId}'" class="bg-gray-700 hover:bg-red-600 px-4 py-2 rounded-full font-bold transition ml-2 text-sm" title="Zgłoś gracza">
-                                            <i class="fa-solid fa-flag"></i>
-                                        </button>
-                                    ` : `
-                                        <a href="#settings" class="bg-gray-700 hover:bg-gray-600 px-6 py-2 rounded-full font-bold transition">Edytuj profil</a>
-                                    `}
-                                </div>
+                content.innerHTML = `
+                    <div class="max-w-3xl mx-auto">
+                        <div class="bg-gray-800 rounded-xl p-8 flex flex-col md:flex-row items-center gap-8 border border-gray-700 relative overflow-hidden">
+                            <div class="absolute top-0 left-0 w-full h-32 bg-gradient-to-r from-blue-900 to-purple-900 opacity-50"></div>
+                            <div class="w-32 h-32 rounded-full bg-gray-700 border-4 border-gray-800 flex items-center justify-center text-5xl font-bold z-10 shadow-lg">
+                                ${profile.username.charAt(0).toUpperCase()}
+                            </div>
+                            <div class="z-10 text-center md:text-left flex-1">
+                                <h1 class="text-4xl font-bold mb-2 flex items-center justify-center md:justify-start gap-2">
+                                    ${Utils.escapeHTML(profile.username)}
+                                    <span class="text-2xl">${Utils.getBadgesHTML(profile)}</span>
+                                </h1>
+                                <p class="text-gray-400 mb-4">Dołączył: ${profile.createdAt ? new Date(profile.createdAt).toLocaleDateString() : 'Dawno temu'}</p>
+                                
+                                ${!isMe ? `
+                                    <button class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-full font-bold transition shadow-lg shadow-blue-500/20">
+                                        <i class="fa-solid fa-user-plus mr-2"></i>Dodaj do znajomych
+                                    </button>
+                                    <button onclick="window.location.hash='#report_user/${userId}'" class="bg-gray-700 hover:bg-red-600 px-4 py-2 rounded-full font-bold transition ml-2 text-sm" title="Zgłoś gracza">
+                                        <i class="fa-solid fa-flag"></i>
+                                    </button>
+                                ` : `
+                                    <a href="#settings" class="bg-gray-700 hover:bg-gray-600 px-6 py-2 rounded-full font-bold transition">Edytuj profil</a>
+                                `}
                             </div>
                         </div>
-                    `;
-                } catch (e) {
-                    content.innerHTML = '<h2>Błąd ładowania profilu</h2>';
-                }
+                    </div>
+                `;
             },
 
             renderAdminPanel: async () => {
@@ -435,7 +465,7 @@
                 const content = document.getElementById('app-content');
                 content.innerHTML = `
                     <div class="max-w-6xl mx-auto">
-                        <h1 class="text-3xl font-bold mb-6 text-red-500"><i class="fa-solid fa-shield"></i> Panel Administratora</h1>
+                        <h1 class="text-3xl font-bold mb-6 text-red-500"><i class="fa-solid fa-shield"></i> Panel Administratora (Local DB)</h1>
                         
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                             <!-- Akcje Mod -->
@@ -462,16 +492,15 @@
                             
                             <!-- Statystyki -->
                             <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                                <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2">Statystyki</h2>
-                                <p>Czekaj, system offline synchronizuje dane...</p>
+                                <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2">Lokalne Statystyki</h2>
+                                <p id="admin-stats">Ładowanie...</p>
                             </div>
                         </div>
 
                         <!-- Zgłoszenia -->
                         <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
                             <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2 flex justify-between items-center">
-                                Zgłoszenia (Raporty) 
-                                <span class="text-sm bg-gray-700 px-2 py-1 rounded text-gray-300">Działa w trybie Offline/Async</span>
+                                Zgłoszenia (Raporty)
                             </h2>
                             <div class="overflow-x-auto">
                                 <table class="w-full text-left border-collapse">
@@ -494,25 +523,35 @@
                         </div>
                     </div>
                 `;
-                
-                // Fetch Reports
-                onSnapshot(collection(db, DB_PATHS.reports), (snapshot) => {
+
+                const renderAdminData = () => {
+                    const reports = LocalDB.read('reports');
+                    const users = LocalDB.read('users');
+                    const games = LocalDB.read('games');
+                    
+                    document.getElementById('admin-stats').innerHTML = `
+                        Użytkownicy: <span class="text-blue-400">${Object.keys(users).length}</span><br>
+                        Gry: <span class="text-green-400">${Object.keys(games).length}</span><br>
+                        Zgłoszenia: <span class="text-red-400">${Object.keys(reports).length}</span>
+                    `;
+
                     const list = document.getElementById('admin-reports-list');
                     if(!list) return;
                     list.innerHTML = '';
-                    if(snapshot.empty) list.innerHTML = '<tr><td colspan="7" class="p-3 text-center text-green-500">Brak aktywnych zgłoszeń! Śpisz spokojnie.</td></tr>';
                     
-                    snapshot.forEach(doc => {
-                        const r = doc.data();
-                        const rId = doc.id;
+                    const reportKeys = Object.keys(reports);
+                    if(reportKeys.length === 0) list.innerHTML = '<tr><td colspan="7" class="p-3 text-center text-green-500">Brak aktywnych zgłoszeń! Śpisz spokojnie.</td></tr>';
+                    
+                    reportKeys.forEach(rId => {
+                        const r = reports[rId];
                         let contextHTML = '-';
                         if(r.chatContext && r.chatContext.length > 0) {
-                            contextHTML = `<button onclick='Utils.showMessage("Logi chatu (10s)", "${Utils.escapeHTML(JSON.stringify(r.chatContext.map(c=>c.sender+": "+c.text)))}")' class="text-blue-400 underline">Zobacz logi</button>`;
+                            contextHTML = `<button onclick='Utils.showMessage("Logi chatu (10s)", "${Utils.escapeHTML(JSON.stringify(r.chatContext.map(c=>c.senderName+": "+c.text)))}")' class="text-blue-400 underline">Zobacz logi</button>`;
                         }
 
                         list.innerHTML += `
                             <tr class="hover:bg-gray-700/50 transition">
-                                <td class="p-3 text-sm">${new Date(r.timestamp?.toDate() || Date.now()).toLocaleString()}</td>
+                                <td class="p-3 text-sm">${new Date(r.timestamp).toLocaleString()}</td>
                                 <td class="p-3"><span class="bg-red-900/50 text-red-400 border border-red-800 px-2 py-1 rounded text-xs font-bold uppercase">${r.type}</span></td>
                                 <td class="p-3">${Utils.escapeHTML(r.reporterName || 'Nieznany')}</td>
                                 <td class="p-3 text-yellow-400">${Utils.escapeHTML(r.targetId)}</td>
@@ -524,7 +563,10 @@
                             </tr>
                         `;
                     });
-                });
+                };
+
+                renderAdminData();
+                Views.adminInterval = setInterval(renderAdminData, 3000);
             }
         };
 
@@ -543,10 +585,10 @@
                 
                 let banUntil = null;
                 if(days && parseInt(days) > 0) {
-                    banUntil = new Date(Date.now() + parseInt(days) * 24 * 60 * 60 * 1000).toISOString();
+                    banUntil = Date.now() + parseInt(days) * 24 * 60 * 60 * 1000;
                 }
                 
-                await updateDoc(doc(db, DB_PATHS.users, uid), {
+                LocalDB.update('users', uid, {
                     isBanned: true,
                     banReason: 'Zablokowany przez Administratora',
                     banUntil: banUntil
@@ -562,11 +604,11 @@
                 let badges = user.badges || [];
                 if(!badges.includes('verified')) badges.push('verified');
                 
-                await updateDoc(doc(db, DB_PATHS.users, uid), { badges: badges });
+                LocalDB.update('users', uid, { badges: badges });
                 Utils.showMessage('Sukces', `Odznaka nadana dla ${nick}.`);
             },
             deleteReport: async (id) => {
-                await deleteDoc(doc(db, DB_PATHS.reports, id));
+                LocalDB.delete('reports', id);
             }
         };
 
@@ -579,10 +621,12 @@
 
             if (GameEngine.isRunning) GameEngine.stop();
             if (StudioEngine.isRunning) StudioEngine.stop();
+            if (Views.homeInterval) clearInterval(Views.homeInterval);
+            if (Views.adminInterval) clearInterval(Views.adminInterval);
 
             if (hash === '' || hash === '#home') Views.renderHome();
             else if (hash.startsWith('#profile/')) Views.renderProfile(hash.split('/')[1]);
-            else if (hash === '#settings') Views.renderHome(); // Placeholder
+            else if (hash === '#settings') Views.renderHome(); 
             else if (hash === '#admin') Views.renderAdminPanel();
             else if (hash === '#studio') StudioUI.init();
             else if (hash.startsWith('#game/')) {
@@ -609,13 +653,12 @@
                 return null; // OK
             },
             issueWarning: async () => {
-                const userRef = doc(db, DB_PATHS.users, AppState.user.id);
                 const currentWarnings = (AppState.user.warnings || 0) + 1;
                 if (currentWarnings >= 3) {
-                    await updateDoc(userRef, { warnings: currentWarnings, isBanned: true, banReason: 'Automatyczny ban za 3 ostrzeżenia (Automod)' });
+                    LocalDB.update('users', AppState.user.id, { warnings: currentWarnings, isBanned: true, banReason: 'Automatyczny ban za 3 ostrzeżenia (Automod)' });
                     window.location.reload();
                 } else {
-                    await updateDoc(userRef, { warnings: currentWarnings });
+                    LocalDB.update('users', AppState.user.id, { warnings: currentWarnings });
                     AppState.user.warnings = currentWarnings;
                 }
             }
@@ -623,6 +666,7 @@
 
         const ChatManager = {
             messages: [],
+            lastProcessedMsgId: null,
             init: (gameId) => {
                 ChatManager.gameId = gameId;
                 ChatManager.messages = [];
@@ -653,9 +697,8 @@
                     timestamp: Date.now()
                 };
                 
-                // Using Firestore to broadcast in the session
-                const msgRef = collection(db, `${DB_PATHS.sessions}/${ChatManager.gameId}/chat`);
-                await addDoc(msgRef, msg);
+                // Write to LocalDB Chat (simulating server broadcast)
+                LocalDB.add('chat_' + ChatManager.gameId, msg);
             },
             localSystemMessage: (text) => {
                 const box = document.getElementById('chat-messages');
@@ -663,7 +706,6 @@
             },
             receiveMessage: (msg) => {
                 ChatManager.messages.push(msg);
-                // Keep only last 50 locally
                 if(ChatManager.messages.length > 50) ChatManager.messages.shift();
                 
                 const box = document.getElementById('chat-messages');
@@ -697,7 +739,6 @@
                     GameUI.toggleTabMenu(true);
                 }
                 
-                // Shortcuts inside ESC menu
                 if (!document.getElementById('esc-menu').classList.contains('hidden')) {
                     if (e.key.toLowerCase() === 'l') GameUI.leaveGame();
                     if (e.key.toLowerCase() === 'r') GameEngine.resetCharacter();
@@ -717,7 +758,6 @@
                 if (forceShow === true) {
                     menu.classList.remove('hidden');
                     GameUI.renderPlayerList();
-                    // Auto hide on keyup
                     const hideTab = (upEvent) => {
                         if(upEvent.key === 'Tab') {
                             menu.classList.add('hidden');
@@ -730,12 +770,10 @@
             renderPlayerList: () => {
                 const list = document.getElementById('tab-player-list');
                 list.innerHTML = '';
-                // Include self
                 list.innerHTML += `<li class="flex justify-between items-center bg-gray-800 p-2 rounded">
                     <span class="font-bold text-blue-400">${Utils.escapeHTML(AppState.user.username)} (Ty)</span>
                 </li>`;
                 
-                // Include other players in session
                 for (const [id, pdata] of Object.entries(GameEngine.players)) {
                     const uData = AppState.allUsers[id] || { username: 'Gość' };
                     list.innerHTML += `
@@ -792,13 +830,13 @@
                     targetId: target,
                     type: target === 'game' ? 'GAME_REPORT' : 'USER_REPORT',
                     reason: reason + " - " + desc,
-                    timestamp: serverTimestamp(),
+                    timestamp: Date.now(),
                     chatContext: ChatManager.getRecentContext() // 10s chat history!
                 };
 
-                await addDoc(collection(db, DB_PATHS.reports), report);
+                LocalDB.add('reports', report);
                 Utils.closeModal();
-                ChatManager.localSystemMessage("Zgłoszenie zostało wysłane do administratorów.");
+                ChatManager.localSystemMessage("Zgłoszenie zapisane w bazie lokalnej (Admin Panel).");
             }
         };
 
@@ -809,10 +847,8 @@
             camera: null,
             renderer: null,
             animationId: null,
-            players: {}, // id -> mesh
-            sessionUnsubs: [],
+            players: {}, 
             
-            // Player Physics & Control
             playerBox: null,
             keys: { w:false, a:false, s:false, d:false, space:false },
             velocity: new THREE.Vector3(),
@@ -827,10 +863,9 @@
                 
                 document.getElementById('in-game-title').innerText = "Ładowanie środowiska...";
 
-                // Setup Three.js
                 const canvas = document.getElementById('game-canvas');
                 GameEngine.scene = new THREE.Scene();
-                GameEngine.scene.background = new THREE.Color(0x87CEEB); // Sky blue
+                GameEngine.scene.background = new THREE.Color(0x87CEEB); 
                 GameEngine.scene.fog = new THREE.Fog(0x87CEEB, 10, 100);
 
                 GameEngine.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -839,7 +874,6 @@
                 GameEngine.renderer.setSize(window.innerWidth, window.innerHeight);
                 GameEngine.renderer.shadowMap.enabled = true;
 
-                // Lighting
                 const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444);
                 hemiLight.position.set(0, 20, 0);
                 GameEngine.scene.add(hemiLight);
@@ -849,13 +883,13 @@
                 dirLight.castShadow = true;
                 GameEngine.scene.add(dirLight);
 
-                // Fetch Game Map
-                const gameDoc = await getDoc(doc(db, DB_PATHS.games, gameId));
-                if(gameDoc.exists() && gameDoc.data().mapData) {
-                    document.getElementById('in-game-title').innerText = gameDoc.data().title;
-                    GameEngine.loadMap(gameDoc.data().mapData);
+                const games = LocalDB.read('games');
+                const gameDoc = games[gameId];
+
+                if(gameDoc && gameDoc.mapData) {
+                    document.getElementById('in-game-title').innerText = gameDoc.title;
+                    GameEngine.loadMap(gameDoc.mapData);
                 } else {
-                    // Default Baseplate Map
                     document.getElementById('in-game-title').innerText = "Domyślna Mapa";
                     const geometry = new THREE.PlaneGeometry(200, 200);
                     const material = new THREE.MeshStandardMaterial({ color: 0x4CAF50, roughness: 0.8 });
@@ -865,24 +899,19 @@
                     GameEngine.scene.add(floor);
                 }
 
-                // Setup Player
                 GameEngine.camera.position.set(0, 2, 5);
                 
-                // Controls
                 canvas.addEventListener('click', () => { if(GameEngine.isRunning) canvas.requestPointerLock(); });
                 document.addEventListener('mousemove', GameEngine.onMouseMove);
                 document.addEventListener('keydown', GameEngine.onKeyDown);
                 document.addEventListener('keyup', GameEngine.onKeyUp);
                 window.addEventListener('resize', GameEngine.onWindowResize);
 
-                // Multiplayer Sync (Hidden P2P via Firestore)
                 GameEngine.initMultiplayer();
-
                 GameEngine.animate();
             },
             
             loadMap: (mapData) => {
-                // mapData expects array of {x,y,z, sx,sy,sz, color}
                 try {
                     const objects = JSON.parse(mapData);
                     objects.forEach(obj => {
@@ -914,7 +943,7 @@
                 GameEngine.camera.rotation.y -= event.movementX * 0.002;
                 GameEngine.camera.rotation.x -= event.movementY * 0.002;
                 GameEngine.camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, GameEngine.camera.rotation.x));
-                GameEngine.camera.rotation.order = 'YXZ'; // Important for FPS camera
+                GameEngine.camera.rotation.order = 'YXZ'; 
             },
 
             onKeyDown: (e) => {
@@ -939,62 +968,12 @@
             },
 
             initMultiplayer: () => {
-                const sessionRef = collection(db, `${DB_PATHS.sessions}/${GameEngine.gameId}/players`);
-                const chatRef = collection(db, `${DB_PATHS.sessions}/${GameEngine.gameId}/chat`);
-
-                // Listen to other players
-                const unsubPlayers = onSnapshot(sessionRef, (snapshot) => {
-                    snapshot.docChanges().forEach((change) => {
-                        const pid = change.doc.id;
-                        if (pid === AppState.user.id) return; // Skip self
-
-                        if (change.type === "added" || change.type === "modified") {
-                            const data = change.doc.data();
-                            if(Date.now() - data.lastSeen > 10000) return; // Ignore stale data
-                            
-                            if (!GameEngine.players[pid]) {
-                                // Create avatar representation
-                                const geo = new THREE.BoxGeometry(1, 2, 1);
-                                const mat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-                                const mesh = new THREE.Mesh(geo, mat);
-                                mesh.castShadow = true;
-                                GameEngine.scene.add(mesh);
-                                GameEngine.players[pid] = mesh;
-                                
-                                // Simple Nametag (optional visual enhancement, keeping simple)
-                                ChatManager.localSystemMessage(`Gracz ${data.username || pid} dołączył.`);
-                            }
-                            // Smoothly interpolate in a real engine, snap here
-                            GameEngine.players[pid].position.lerp(new THREE.Vector3(data.x, data.y, data.z), 0.5);
-                            GameEngine.players[pid].rotation.y = data.ry;
-                        }
-                        if (change.type === "removed") {
-                            if(GameEngine.players[pid]) {
-                                GameEngine.scene.remove(GameEngine.players[pid]);
-                                delete GameEngine.players[pid];
-                                ChatManager.localSystemMessage(`Gracz opuścił grę.`);
-                            }
-                        }
-                    });
-                });
-
-                // Listen to chat
-                let isFirstChatLoad = true;
-                const unsubChat = onSnapshot(chatRef, (snapshot) => {
-                    snapshot.docChanges().forEach((change) => {
-                        if (change.type === "added") {
-                            if(!isFirstChatLoad) ChatManager.receiveMessage(change.doc.data());
-                        }
-                    });
-                    isFirstChatLoad = false;
-                });
-
-                GameEngine.sessionUnsubs.push(unsubPlayers, unsubChat);
-                
-                // My sync loop (send my pos to Firestore every 100ms)
-                GameEngine.syncInterval = setInterval(async () => {
+                // LOCAL STORAGE MULTIPLAYER P2P (Cross-tab)
+                GameEngine.syncInterval = setInterval(() => {
                     if(!GameEngine.isRunning) return;
-                    await setDoc(doc(db, `${DB_PATHS.sessions}/${GameEngine.gameId}/players`, AppState.user.id), {
+                    
+                    // Write my position
+                    LocalDB.setDoc('session_' + GameEngine.gameId, AppState.user.id, {
                         username: AppState.user.username,
                         x: GameEngine.camera.position.x,
                         y: GameEngine.camera.position.y,
@@ -1002,54 +981,91 @@
                         ry: GameEngine.camera.rotation.y,
                         lastSeen: Date.now()
                     });
-                }, 100);
+
+                    // Read others
+                    const session = LocalDB.read('session_' + GameEngine.gameId);
+                    
+                    for (const pid in session) {
+                        if (pid === AppState.user.id) continue;
+                        const data = session[pid];
+                        
+                        if (Date.now() - data.lastSeen > 5000) {
+                            // Player timed out
+                            if (GameEngine.players[pid]) {
+                                GameEngine.scene.remove(GameEngine.players[pid]);
+                                delete GameEngine.players[pid];
+                                ChatManager.localSystemMessage(`Gracz ${data.username} opuścił grę.`);
+                            }
+                            continue;
+                        }
+
+                        if (!GameEngine.players[pid]) {
+                            const geo = new THREE.BoxGeometry(1, 2, 1);
+                            const mat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+                            const mesh = new THREE.Mesh(geo, mat);
+                            mesh.castShadow = true;
+                            GameEngine.scene.add(mesh);
+                            GameEngine.players[pid] = mesh;
+                            ChatManager.localSystemMessage(`Gracz ${data.username || pid} dołączył.`);
+                        }
+                        
+                        GameEngine.players[pid].position.lerp(new THREE.Vector3(data.x, data.y, data.z), 0.5);
+                        GameEngine.players[pid].rotation.y = data.ry;
+                    }
+
+                    // Polling Chat
+                    const chats = Object.values(LocalDB.read('chat_' + ChatManager.gameId))
+                                        .sort((a,b) => a.timestamp - b.timestamp);
+                    
+                    const newChats = chats.filter(c => !ChatManager.messages.find(m => m.id === c.id && m.timestamp === c.timestamp));
+                    newChats.forEach(c => ChatManager.receiveMessage(c));
+
+                }, 100); 
             },
 
             stop: () => {
                 GameEngine.isRunning = false;
                 cancelAnimationFrame(GameEngine.animationId);
                 clearInterval(GameEngine.syncInterval);
-                GameEngine.sessionUnsubs.forEach(unsub => unsub());
                 document.exitPointerLock();
                 document.removeEventListener('mousemove', GameEngine.onMouseMove);
                 document.removeEventListener('keydown', GameEngine.onKeyDown);
                 document.removeEventListener('keyup', GameEngine.onKeyUp);
                 GameUI.cleanup();
 
-                // Remove me from session
-                if(GameEngine.gameId) {
-                    deleteDoc(doc(db, `${DB_PATHS.sessions}/${GameEngine.gameId}/players`, AppState.user.id)).catch(()=>{});
+                if(GameEngine.gameId && AppState.user) {
+                    LocalDB.delete('session_' + GameEngine.gameId, AppState.user.id);
                 }
                 
-                // Cleanup WebGL
                 if(GameEngine.renderer) {
                     GameEngine.renderer.dispose();
                     GameEngine.scene.clear();
                 }
+                
+                // Clear simulated player meshes
+                GameEngine.players = {};
             },
 
             animate: () => {
                 if(!GameEngine.isRunning) return;
                 GameEngine.animationId = requestAnimationFrame(GameEngine.animate);
 
-                // Physics & Movement (Simple)
                 const time = performance.now();
                 if(GameEngine.prevTime) {
                     const delta = (time - GameEngine.prevTime) / 1000;
                     
                     GameEngine.velocity.x -= GameEngine.velocity.x * 10.0 * delta;
                     GameEngine.velocity.z -= GameEngine.velocity.z * 10.0 * delta;
-                    GameEngine.velocity.y -= 9.8 * 2.0 * delta; // 100.0 = mass
+                    GameEngine.velocity.y -= 9.8 * 2.0 * delta; 
 
                     GameEngine.direction.z = Number(GameEngine.keys.w) - Number(GameEngine.keys.s);
                     GameEngine.direction.x = Number(GameEngine.keys.d) - Number(GameEngine.keys.a);
-                    GameEngine.direction.normalize(); // consistent movement in all directions
+                    GameEngine.direction.normalize(); 
 
                     const speed = 50.0;
                     if (GameEngine.keys.w || GameEngine.keys.s) GameEngine.velocity.z -= GameEngine.direction.z * speed * delta;
                     if (GameEngine.keys.a || GameEngine.keys.d) GameEngine.velocity.x -= GameEngine.direction.x * speed * delta;
 
-                    // Move camera relative to direction
                     const euler = new THREE.Euler(0, GameEngine.camera.rotation.y, 0, 'YXZ');
                     const vec = new THREE.Vector3(GameEngine.velocity.x * delta, 0, GameEngine.velocity.z * delta);
                     vec.applyEuler(euler);
@@ -1074,7 +1090,6 @@
                 const content = document.getElementById('app-content');
                 content.innerHTML = `
                     <div class="flex flex-col h-[calc(100vh-80px)] border-t border-gray-700 relative">
-                        <!-- Toolbar -->
                         <div class="bg-gray-800 p-2 flex items-center gap-2 border-b border-gray-700 z-10">
                             <h2 class="text-xl font-bold text-yellow-400 mr-4"><i class="fa-solid fa-hammer"></i> AStudio</h2>
                             
@@ -1091,10 +1106,9 @@
                             <button onclick="StudioEngine.openScriptEditor()" class="studio-tool bg-gray-700 p-2 rounded transition text-blue-400" title="LUA Script"><i class="fa-brands fa-lua"></i> Skrypt (WIP)</button>
                             
                             <div class="flex-1"></div>
-                            <button onclick="StudioUI.showPublishModal()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold shadow-lg"><i class="fa-solid fa-cloud-arrow-up"></i> Publikuj Grę</button>
+                            <button onclick="StudioUI.showPublishModal()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold shadow-lg"><i class="fa-solid fa-cloud-arrow-up"></i> Publikuj Grę (Lokalnie)</button>
                         </div>
                         
-                        <!-- Studio Canvas -->
                         <div class="flex-1 relative bg-gray-900" id="studio-container">
                             <canvas id="studio-canvas" class="w-full h-full block"></canvas>
                         </div>
@@ -1181,9 +1195,8 @@
                 
                 if(intersects.length > 0) {
                     StudioEngine.selectedObject = intersects[0].object;
-                    StudioEngine.selectedObject.material.emissive.setHex(0x333333); // Highlight
+                    StudioEngine.selectedObject.material.emissive.setHex(0x333333); 
                     
-                    // Super basic movement simulation for POC (Click to move up slightly to show interaction)
                     if(StudioEngine.mode === 'translate') StudioEngine.selectedObject.position.y += 1;
                     if(StudioEngine.mode === 'scale') StudioEngine.selectedObject.scale.addScalar(0.5);
                 } else {
@@ -1201,14 +1214,12 @@
             openScriptEditor: () => {
                 if(!StudioEngine.selectedObject) return Utils.showMessage('Błąd', 'Wybierz klocek, aby dodać skrypt!');
                 Utils.showMessage('Edytor Lua (Symulacja)', 'W pełnej wersji wpiszesz tu kod Lua. W tej wersji dodamy obracanie się obiektu.');
-                // Simulate attaching a script behavior
                 StudioEngine.selectedObject.userData.isSpinning = true;
             },
             publish: async () => {
                 const title = document.getElementById('pub-title').value || "Gra bez nazwy";
                 const desc = document.getElementById('pub-desc').value;
                 
-                // Serialize scene
                 const mapData = StudioEngine.objects.map(obj => ({
                     x: obj.position.x, y: obj.position.y, z: obj.position.z,
                     sx: obj.geometry.parameters.width * obj.scale.x,
@@ -1222,21 +1233,20 @@
                     creatorId: AppState.user.id,
                     mapData: JSON.stringify(mapData),
                     playersCount: 0,
-                    publishedAt: serverTimestamp()
+                    publishedAt: Date.now()
                 };
 
-                await addDoc(collection(db, DB_PATHS.games), gameData);
+                LocalDB.add('games', gameData);
                 
-                // Reward user with creator badge if they don't have it
-                const userRef = doc(db, DB_PATHS.users, AppState.user.id);
                 const badges = AppState.user.badges || [];
                 if(!badges.includes('creator')) {
                     badges.push('creator');
-                    await updateDoc(userRef, { badges });
+                    LocalDB.update('users', AppState.user.id, { badges });
+                    AppState.user.badges = badges;
                 }
 
                 Utils.closeModal();
-                Utils.showMessage('Opublikowano!', 'Twoja gra jest teraz widoczna dla wszystkich.');
+                Utils.showMessage('Opublikowano!', 'Twoja gra została zapisana w bazie lokalnej.');
                 window.location.hash = '#home';
             },
             stop: () => {
@@ -1247,12 +1257,10 @@
                 if(!StudioEngine.isRunning) return;
                 StudioEngine.animationId = requestAnimationFrame(StudioEngine.animate);
                 
-                // Slowly rotate camera around origin for studio feel
                 StudioEngine.camera.position.x = Math.sin(Date.now() * 0.0005) * 15;
                 StudioEngine.camera.position.z = Math.cos(Date.now() * 0.0005) * 15;
                 StudioEngine.camera.lookAt(0,0,0);
 
-                // Run simulated scripts
                 StudioEngine.objects.forEach(obj => {
                     if(obj.userData.isSpinning) {
                         obj.rotation.y += 0.05;
@@ -1263,7 +1271,7 @@
             }
         };
 
-        // Initialize Everything
+        // Initialize
         authenticateUser();
 
     </script>
