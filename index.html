@@ -683,80 +683,52 @@
 
         // --- SYSTEM ŁOWCY TORNAD (SZUKANIE WIRU) ---
         function startTornadoHunter() {
-            // Symulujemy znalezienie potężnego tornada w legendarnej "Alei Tornad" (Oklahoma, USA)
+            // Przenosimy się do legendarnej "Alei Tornad" (Oklahoma, USA)
             lat = 35.4676;
             lon = -97.5164;
-            cityName = "ALARM: Oklahoma City, USA (Aleja Tornad)";
+            cityName = "Oklahoma City, USA (Strefa wysokiego ryzyka)";
 
             // 1. Zmiana UI na Skanowanie Radarowe
-            document.getElementById('location-text').textContent = "Satelita skanuje świat...";
-            document.getElementById('gps-status').textContent = "(Szukanie wiru 🌪️...)";
-            document.getElementById('current-icon-container').innerHTML = `<i data-lucide="radar" class="w-16 h-16 animate-spin text-red-500"></i>`;
+            document.getElementById('location-text').textContent = "Łączenie z prawdziwym radarem...";
+            document.getElementById('gps-status').textContent = "(Skanowanie USA 🌪️)";
+            document.getElementById('current-icon-container').innerHTML = `<i data-lucide="radar" class="w-16 h-16 animate-spin text-blue-400"></i>`;
             lucide.createIcons();
 
-            // 2. Lot nad Oceanem i uderzenie w wir
+            // 2. Lot nad Oceanem do USA
             if (mapInstance) {
-                // Sprzątamy stary wir jeśli już kliknięto wcześniej
+                // Sprzątamy ewentualne stare znaczniki
                 if (tornadoMarker) mapInstance.removeLayer(tornadoMarker);
                 
-                // Płynny, widowiskowy lot (4.5 sekundy) przez pół Ziemi
-                mapInstance.flyTo([lat, lon], 11, {
+                // Płynny, widowiskowy lot przez Ziemię (4 sekundy)
+                mapInstance.flyTo([lat, lon], 9, {
                     animate: true,
-                    duration: 4.5
+                    duration: 4.0
                 });
-
-                // Znacznik wirującego Tornada (Obrót w 3D napędzany animacją CSS)
-                const tIcon = L.divIcon({
-                    className: 'custom-div-icon',
-                    html: `<div style="font-size: 70px; animation: spin-fast 0.6s linear infinite; text-shadow: 0 0 35px #ef4444; text-align: center; line-height: 70px;">🌪️</div>`,
-                    iconSize: [70, 70],
-                    iconAnchor: [35, 35]
-                });
-                
-                // Dodajemy tornado do mapy
-                tornadoMarker = L.marker([lat, lon], {icon: tIcon}).addTo(mapInstance);
-                
-                // Dodajemy wielki czerwony okrąg zniszczeń na mapie
-                L.circle([lat, lon], {
-                    color: 'red',
-                    fillColor: '#f03',
-                    fillOpacity: 0.3,
-                    radius: 8000 // Promień 8 km
-                }).addTo(mapInstance);
             }
 
-            // 3. Gdy satelita doleci na miejsce, wstrzykujemy wygenerowane EKSTREMALNE dane
+            // 3. ZAMIAST ZMYŚLAĆ DANE - POBIERAMY W 100% PRAWDZIWĄ POGODĘ!
             setTimeout(() => {
-                document.getElementById('location-text').textContent = cityName;
-                document.getElementById('gps-status').textContent = "(Wykryto cel!)";
+                // Odpytujemy prawdziwe serwery pogodowe dla miejsca, do którego dolecieliśmy
+                fetchWeatherData();
                 
-                // Tworzymy symulowane dane na następne 16 dni (tak jak robi to Open-Meteo)
-                const timeArray = []; const maxArray = []; const minArray = []; const codeArray = []; const sunArray = [];
-                for(let i=0; i<16; i++) {
-                    timeArray.push(new Date(Date.now() + i * 86400000).toISOString());
-                    maxArray.push(Math.round(20 + Math.random() * 10));
-                    minArray.push(Math.round(10 + Math.random() * 10));
-                    codeArray.push(i < 2 ? 95 : (i < 4 ? 65 : 2)); // Pierwsze 2 dni to ciągła burza
-                    sunArray.push(new Date().toISOString());
-                }
-
-                // Generujemy wiatr 145km/h żeby system myślał, że uderzyło Tornado!
-                const fakeData = {
-                    current: {
-                        temperature_2m: 29, relative_humidity_2m: 95, 
-                        wind_speed_10m: 145, weather_code: 95, is_day: 1
-                    },
-                    daily: {
-                        time: timeArray, temperature_2m_max: maxArray, temperature_2m_min: minArray, 
-                        weather_code: codeArray, sunrise: sunArray, sunset: sunArray
-                    }
-                };
-
-                // Te dane w naturalny sposób zdetonują Twoje czerwone banery!
-                updateUI(fakeData);
-                generateAlerts(fakeData);
-                updateForecast(fakeData);
-            }, 4500); // Wykonywane dokładnie w momencie lądowania kamery mapy
+                // Pokazujemy niebieski komunikat potwierdzający autentyczność
+                const container = document.getElementById('alerts-container');
+                container.innerHTML = `
+                    <div class="bg-blue-600/90 backdrop-blur-md p-5 rounded-2xl border border-blue-400 text-white shadow-[0_0_20px_rgba(37,99,235,0.6)] flex items-center gap-5">
+                        <div class="bg-white/20 p-3 rounded-full flex-shrink-0">
+                            <i data-lucide="satellite" class="w-8 h-8 text-blue-100 animate-pulse"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-extrabold text-lg tracking-wide uppercase">Satelita połączony (ZERO ŚCIEMY)</h3>
+                            <p class="text-sm text-blue-100 mt-1 font-medium">Skanujemy amerykańską Aleję Tornad. Dane w aplikacji są w 100% prawdziwe z radarów na żywo. Jeśli aktualnie w Oklahoma City jest spokojnie, nie zobaczysz sztucznych alarmów – tylko rzeczywistą pogodę!</p>
+                        </div>
+                    </div>
+                `;
+                container.classList.remove('hidden');
+                container.classList.add('flex');
+                lucide.createIcons();
+                
+            }, 4000); // Wykonywane w momencie zakończenia animacji lotu
         }
 
         document.addEventListener('DOMContentLoaded', init);
