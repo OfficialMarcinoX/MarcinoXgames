@@ -1,1314 +1,648 @@
+<!-- ... existing code ... -->
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="pl" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MarcinoXGames</title>
-    <link rel="icon" href="data:,">
+    <title>Centrum Pogodowe planexd_0 PRO MAX</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
         
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: #0f172a; /* Slate 900 */
-            color: #f8fafc;
-            overflow-x: hidden;
-            margin: 0;
-            padding: 0;
+            font-family: 'Outfit', sans-serif;
+            color: white;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
+            background-size: 200% 200%;
+            animation: gradient-shift 15s ease infinite;
+            transition: background 1.5s ease;
         }
 
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #1e293b; }
-        ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #2563eb; }
+        @keyframes gradient-shift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
 
         .glass-panel {
-            background: rgba(30, 41, 59, 0.7);
+            background: rgba(15, 23, 42, 0.5);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 1.5rem;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .alert-active {
+            background: linear-gradient(90deg, rgba(127, 29, 29, 0.8), rgba(153, 27, 27, 0.8));
             backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-left: 6px solid #ef4444;
+            animation: pulse-alert 2s infinite;
         }
 
-        .neon-text {
-            text-shadow: 0 0 10px rgba(59, 130, 246, 0.8), 0 0 20px rgba(59, 130, 246, 0.4);
+        @keyframes pulse-alert {
+            0%, 100% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 30px rgba(239, 68, 68, 0.8); }
         }
 
-        #game-container {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: 100;
-            background: #000;
-        }
-
-        /* Game UI Overlay */
-        #game-ui {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
+        #map {
             height: 100%;
-            pointer-events: none; /* Let clicks pass through to canvas by default */
-            z-index: 101;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
+            min-height: 400px;
+            width: 100%;
+            border-radius: 1.25rem;
+            z-index: 10;
         }
 
-        .interactive-ui {
-            pointer-events: auto;
+        .custom-scrollbar::-webkit-scrollbar { height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.3); border-radius: 10px; }
+
+        .search-input {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            transition: all 0.3s ease;
         }
-
-        /* Modals */
-        .modal-overlay {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8);
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            backdrop-filter: blur(4px);
+        .search-input:focus {
+            background: rgba(255, 255, 255, 0.2);
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.5);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
         }
-
-        .badge-verified { color: #3b82f6; }
-        .badge-creator { color: #eab308; }
-        .badge-admin { color: #ef4444; }
-
-        /* AStudio Toolbar */
-        .studio-tool:hover { background: #334155; transform: scale(1.05); }
-        .studio-tool.active { border: 2px solid #3b82f6; background: #1e293b; }
+        
+        /* Animacja dla przycisku powiadomień */
+        @keyframes ring {
+            0% { transform: rotate(0); }
+            10% { transform: rotate(15deg); }
+            20% { transform: rotate(-10deg); }
+            30% { transform: rotate(5deg); }
+            40% { transform: rotate(-5deg); }
+            50% { transform: rotate(0); }
+            100% { transform: rotate(0); }
+        }
+        .bell-shake { animation: ring 2s infinite; }
     </style>
 </head>
-<body>
+<body class="p-4 md:p-8 flex flex-col items-center">
 
-    <!-- Navigation -->
-    <nav id="main-nav" class="glass-panel sticky top-0 z-50 px-6 py-4 flex justify-between items-center hidden">
-        <div class="flex items-center gap-6">
-            <a href="#home" class="text-2xl font-bold text-blue-500 neon-text tracking-tighter">
-                <i class="fa-solid fa-gamepad mr-2"></i>MarcinoXGames
-            </a>
-            <a href="#home" class="hover:text-blue-400 font-semibold transition"><i class="fa-solid fa-house mr-1"></i> Gry</a>
-            <a href="#studio" class="hover:text-yellow-400 font-semibold transition"><i class="fa-solid fa-hammer mr-1"></i> AStudio</a>
-        </div>
-        <div class="flex items-center gap-4" id="nav-user-section">
-            <!-- Populated dynamically -->
-        </div>
-    </nav>
-
-    <!-- Main Content Area -->
-    <main id="app-content" class="min-h-screen p-6 hidden">
-        <!-- Views will be injected here -->
-    </main>
-
-    <!-- Fullscreen Game Container -->
-    <div id="game-container">
-        <canvas id="game-canvas" class="w-full h-full block"></canvas>
-        <div id="game-ui">
-            <!-- Top Left: Game Info & Leave Hint -->
-            <div class="p-4 interactive-ui text-sm text-gray-300 drop-shadow-md">
-                <p><kbd class="bg-gray-800 px-1 rounded border border-gray-600">ESC</kbd> Menu | <kbd class="bg-gray-800 px-1 rounded border border-gray-600">TAB</kbd> Gracze</p>
-                <h2 id="in-game-title" class="text-xl font-bold text-white mt-1">Ładowanie gry...</h2>
+    <div class="max-w-6xl w-full space-y-6">
+        
+        <!-- Nagłówek i Wyszukiwarka -->
+        <header class="flex flex-col lg:flex-row justify-between items-center mb-6 gap-6 glass-panel p-6">
+            <div class="text-center lg:text-left">
+                <h1 class="text-3xl lg:text-4xl font-extrabold tracking-tight text-white drop-shadow-md">
+                    Centrum Pogodowe <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-500">planexd_0</span>
+                </h1>
+                <p class="text-gray-200 text-sm mt-2 flex items-center justify-center lg:justify-start gap-2">
+                    <i data-lucide="map-pin" class="w-4 h-4 text-red-400"></i>
+                    <span id="location-text" class="font-semibold text-lg">Wykrywanie...</span>
+                    <span id="gps-status" class="text-xs opacity-70"></span>
+                </p>
             </div>
+            
+            <div class="flex items-center gap-3 w-full lg:w-auto">
+                
+                <!-- Przycisk Powiadomień -->
+                <button id="notify-btn" class="bg-yellow-500/20 hover:bg-yellow-500/40 border border-yellow-400/30 text-yellow-300 p-2.5 rounded-full transition-colors group shadow-lg" title="Włącz powiadomienia na ekranie (Wymaga HTTPS)">
+                    <i data-lucide="bell" id="bell-icon" class="w-5 h-5 group-hover:scale-110 transition-transform bell-shake"></i>
+                </button>
 
-            <!-- TAB Menu (Player List) -->
-            <div id="tab-menu" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/3 bg-gray-900/90 border border-gray-700 rounded-lg shadow-2xl interactive-ui p-4">
-                <h3 class="text-lg font-bold border-b border-gray-700 pb-2 mb-2">Lista graczy</h3>
-                <ul id="tab-player-list" class="space-y-2 max-h-64 overflow-y-auto"></ul>
+                <!-- Przycisk wymuszenia GPS -->
+                <button id="gps-btn" class="bg-blue-500/20 hover:bg-blue-500/40 border border-blue-400/30 text-blue-300 p-2.5 rounded-full transition-colors group shadow-lg" title="Pobierz moją lokalizację GPS">
+                    <i data-lucide="navigation" class="w-5 h-5 group-hover:scale-110 transition-transform"></i>
+                </button>
+
+                <!-- Wyszukiwarka -->
+                <form id="search-form" class="relative w-full lg:w-64">
+                    <input type="text" id="city-input" placeholder="Szukaj miasta..." class="search-input w-full py-2.5 pl-10 pr-4 rounded-full text-sm">
+                    <i data-lucide="search" class="w-4 h-4 absolute left-3 top-3 text-gray-300"></i>
+                    <button type="submit" class="hidden">Szukaj</button>
+                </form>
+                
+                <div id="time-display" class="hidden md:block text-xl font-bold bg-black/40 px-5 py-2 rounded-full border border-white/10 shadow-inner min-w-[120px] text-center">
+                    00:00
+                </div>
             </div>
+        </header>
 
-            <!-- ESC Menu -->
-            <div id="esc-menu" class="hidden absolute top-0 left-0 w-full h-full bg-black/80 interactive-ui flex flex-col items-center justify-center">
-                <h1 class="text-4xl font-bold mb-8 neon-text">Menu Gry</h1>
-                <div class="flex flex-col gap-4 w-64">
-                    <button onclick="GameUI.resumeGame()" class="bg-blue-600 hover:bg-blue-500 py-3 rounded font-bold text-lg transition">(E) Wróć do gry</button>
-                    <button onclick="GameEngine.resetCharacter()" class="bg-yellow-600 hover:bg-yellow-500 py-3 rounded font-bold text-lg transition">(R) Reset Postaci</button>
-                    <button onclick="GameUI.leaveGame()" class="bg-red-600 hover:bg-red-500 py-3 rounded font-bold text-lg transition">(L) Wyjdź z gry</button>
-                    <button onclick="GameUI.showReportModal()" class="bg-gray-700 hover:bg-gray-600 py-3 rounded font-bold text-lg transition mt-4">Zgłoś nadużycie</button>
+        <!-- Kontener na Ostrzeżenia (Pojawia się tylko gdy jest niebezpiecznie) -->
+        <div id="alerts-container" class="hidden flex-col gap-3"></div>
+
+        <!-- Główny Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Aktualna Pogoda -->
+            <div class="glass-panel p-8 lg:col-span-1 flex flex-col justify-between relative overflow-hidden group">
+                <div class="absolute -top-10 -right-10 p-6 opacity-10 transform group-hover:scale-110 transition-transform duration-700" id="current-bg-icon">
+                    <i data-lucide="cloud" class="w-64 h-64"></i>
+                </div>
+                
+                <div class="relative z-10">
+                    <h2 class="text-sm uppercase tracking-widest text-gray-300 font-semibold mb-4">Aktualnie na zewnątrz</h2>
+                    <div class="flex items-center gap-6 mb-4">
+                        <div id="current-icon-container" class="text-white drop-shadow-lg">
+                            <i data-lucide="loader" class="w-16 h-16 animate-spin"></i>
+                        </div>
+                        <div class="text-7xl font-extrabold tracking-tighter drop-shadow-md" id="current-temp">--°</div>
+                    </div>
+                    <p class="text-2xl font-medium text-white capitalize drop-shadow" id="current-desc">Ładowanie...</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 mt-8 relative z-10">
+                    <div class="bg-black/30 backdrop-blur-sm p-4 rounded-2xl flex items-center gap-3">
+                        <i data-lucide="wind" class="text-cyan-300 w-6 h-6"></i>
+                        <div>
+                            <p class="text-[10px] uppercase text-gray-400 font-bold">Wiatr</p>
+                            <p class="font-bold text-sm" id="current-wind">-- km/h</p>
+                        </div>
+                    </div>
+                    <div class="bg-black/30 backdrop-blur-sm p-4 rounded-2xl flex items-center gap-3">
+                        <i data-lucide="droplets" class="text-blue-300 w-6 h-6"></i>
+                        <div>
+                            <p class="text-[10px] uppercase text-gray-400 font-bold">Wilgotność</p>
+                            <p class="font-bold text-sm" id="current-humidity">-- %</p>
+                        </div>
+                    </div>
+                    <div class="bg-black/30 backdrop-blur-sm p-4 rounded-2xl flex items-center gap-3">
+                        <i data-lucide="sunrise" class="text-amber-300 w-6 h-6"></i>
+                        <div>
+                            <p class="text-[10px] uppercase text-gray-400 font-bold">Wschód</p>
+                            <p class="font-bold text-sm" id="sunrise-time">--:--</p>
+                        </div>
+                    </div>
+                    <div class="bg-black/30 backdrop-blur-sm p-4 rounded-2xl flex items-center gap-3">
+                        <i data-lucide="sunset" class="text-orange-400 w-6 h-6"></i>
+                        <div>
+                            <p class="text-[10px] uppercase text-gray-400 font-bold">Zachód</p>
+                            <p class="font-bold text-sm" id="sunset-time">--:--</p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Chat Box (Bottom Left) -->
-            <div id="game-chat" class="absolute bottom-4 left-4 w-80 h-64 bg-black/50 border border-gray-700 rounded interactive-ui flex flex-col">
-                <div id="chat-messages" class="flex-1 overflow-y-auto p-2 text-sm space-y-1 flex flex-col-reverse">
-                    <!-- Messages go here -->
+            <!-- Mapa / Radar 3D -->
+            <div class="glass-panel p-2 lg:col-span-2 relative shadow-2xl overflow-hidden rounded-2xl">
+                <div class="absolute top-4 left-4 z-[400] bg-black/80 backdrop-blur-md px-4 py-2 rounded-full text-xs font-bold text-white border border-white/20 flex items-center gap-2 shadow-lg">
+                    <span class="relative flex h-3 w-3">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                    </span>
+                    Ziemia 3D Satelita (Live)
                 </div>
-                <div class="p-2 border-t border-gray-700 bg-black/60 flex">
-                    <input type="text" id="chat-input" class="w-full bg-transparent text-white outline-none" placeholder="Napisz wiadomość...">
+                
+                <!-- Animowany pływający przycisk informujący o nowej funkcji klikania -->
+                <div class="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-[400] bg-blue-600/90 backdrop-blur-md px-6 py-3 rounded-full text-sm font-bold text-white border border-blue-400 shadow-[0_0_20px_rgba(37,99,235,0.6)] pointer-events-none animate-bounce text-center w-max hidden md:block">
+                    <i data-lucide="mouse-pointer-click" class="w-4 h-4 inline-block mr-2 align-text-bottom"></i>
+                    Kliknij w chmurę na mapie, aby sprawdzić tam pogodę!
                 </div>
+
+                <div id="map"></div>
+            </div>
+            
+        </div>
+
+        <!-- Prognoza na 16 dni -->
+        <div class="glass-panel p-8">
+            <h2 class="text-xl font-bold mb-6 flex items-center gap-2 drop-shadow-md">
+                <i data-lucide="calendar-clock" class="text-blue-300"></i>
+                Długoterminowa prognoza (16 dni)
+            </h2>
+            <div class="flex overflow-x-auto custom-scrollbar gap-5 pb-4" id="forecast-container">
+                <div class="text-gray-300 w-full text-center py-4 font-medium animate-pulse">Ładowanie danych z serwera...</div>
             </div>
         </div>
+
+        <!-- Sekcja Testera -->
+        <div class="glass-panel p-8 mt-8 border border-red-500/30">
+            <h2 class="text-xl font-bold mb-6 flex items-center gap-2 drop-shadow-md text-red-400">
+                <i data-lucide="shield-alert" class="w-6 h-6"></i>
+                Tester Systemu Ostrzeżeń (Dla weryfikacji powiadomień)
+            </h2>
+            <div class="flex flex-col gap-3" id="tester-container">
+                <!-- Tutaj wpadną fejkowane alarmy -->
+            </div>
+            <button onclick="testPushNotification()" class="mt-6 bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-6 rounded-full shadow-lg transition-all flex items-center gap-2">
+                <i data-lucide="smartphone"></i> Wyślij mi TESTOWE powiadomienie Push
+            </button>
+        </div>
+
     </div>
 
-    <!-- Global Modal Container -->
-    <div id="global-modal" class="hidden"></div>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        // ==========================================
-        // LOCAL DATABASE SYSTEM (No Firebase)
-        // Fallback to memory if localStorage is blocked by iframe Tracking Prevention
-        // ==========================================
-        const MemoryStore = {};
-        
-        const SafeStorage = {
-            get: (key) => {
-                try { return localStorage.getItem(key) || MemoryStore[key] || null; }
-                catch(e) { return MemoryStore[key] || null; }
-            },
-            set: (key, val) => {
-                try { localStorage.setItem(key, val); }
-                catch(e) {}
-                MemoryStore[key] = val;
-            }
+        // --- KONFIGURACJA POGODY ---
+        const weatherCodes = {
+            0: { desc: 'Czyste niebo', icon: 'sun', bg: 'linear-gradient(135deg, #2980B9 0%, #6DD5FA 100%)' },
+            1: { desc: 'Głównie bezchmurnie', icon: 'cloud-sun', bg: 'linear-gradient(135deg, #2980B9 0%, #6DD5FA 100%)' },
+            2: { desc: 'Słońce z chmurami', icon: 'cloud-sun', bg: 'linear-gradient(135deg, #5C6C7B 0%, #2B3A4A 100%)' },
+            3: { desc: 'Pochmurno', icon: 'cloud', bg: 'linear-gradient(135deg, #373B44 0%, #4286f4 100%)' },
+            45: { desc: 'Mgła', icon: 'cloud-fog', bg: 'linear-gradient(135deg, #757F9A 0%, #D7DDE8 100%)' },
+            48: { desc: 'Marznąca mgła', icon: 'cloud-fog', bg: 'linear-gradient(135deg, #757F9A 0%, #D7DDE8 100%)' },
+            51: { desc: 'Lekka mżawka', icon: 'cloud-drizzle', bg: 'linear-gradient(135deg, #4b6cb7 0%, #182848 100%)' },
+            53: { desc: 'Mżawka', icon: 'cloud-drizzle', bg: 'linear-gradient(135deg, #4b6cb7 0%, #182848 100%)' },
+            61: { desc: 'Słaby deszcz', icon: 'cloud-rain', bg: 'linear-gradient(135deg, #2c3e50 0%, #3498db 100%)' },
+            63: { desc: 'Deszcz', icon: 'cloud-rain', bg: 'linear-gradient(135deg, #2c3e50 0%, #3498db 100%)' },
+            65: { desc: 'Silny deszcz', icon: 'cloud-rain', bg: 'linear-gradient(135deg, #141E30 0%, #243B55 100%)' },
+            71: { desc: 'Słaby śnieg', icon: 'snowflake', bg: 'linear-gradient(135deg, #E0EAFC 0%, #CFDEF3 100%)' },
+            75: { desc: 'Silny śnieg', icon: 'snowflake', bg: 'linear-gradient(135deg, #83a4d4 0%, #b6fbff 100%)' },
+            82: { desc: 'Gwałtowne ulewy', icon: 'cloud-showers-heavy', bg: 'linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)' },
+            95: { desc: 'Burza', icon: 'cloud-lightning', bg: 'linear-gradient(135deg, #232526 0%, #414345 100%)' },
+            99: { desc: 'Burza z gradem', icon: 'cloud-lightning', bg: 'linear-gradient(135deg, #000000 0%, #434343 100%)' }
         };
 
-        const LocalDB = {
-            read: (table) => {
-                const data = SafeStorage.get('mxg_' + table);
-                return data ? JSON.parse(data) : {};
-            },
-            write: (table, data) => {
-                SafeStorage.set('mxg_' + table, JSON.stringify(data));
-            },
-            add: (table, data) => {
-                const t = LocalDB.read(table);
-                const id = 'id_' + Date.now() + Math.random().toString(36).substr(2, 5);
-                t[id] = { ...data, id };
-                LocalDB.write(table, t);
-                return id;
-            },
-            update: (table, id, data) => {
-                const t = LocalDB.read(table);
-                if(t[id]) { 
-                    t[id] = { ...t[id], ...data }; 
-                    LocalDB.write(table, t); 
-                }
-            },
-            setDoc: (table, id, data) => {
-                const t = LocalDB.read(table);
-                t[id] = { ...data, id };
-                LocalDB.write(table, t);
-            },
-            delete: (table, id) => {
-                const t = LocalDB.read(table);
-                delete t[id];
-                LocalDB.write(table, t);
-            }
-        };
+        const nightBg = 'linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)';
 
-        // Core State
-        const AppState = {
-            user: null, // Full user document
-            allUsers: {}, // Cache for usernames/badges
-            currentGameId: null,
-            isAdminRoute: false,
-            syncInterval: null
-        };
+        // Zmienne globalne
+        let lat = 52.2297; 
+        let lon = 21.0122;
+        let cityName = "Warszawa";
+        let mapInstance = null;
+        let mapMarker = null;
 
-        const Utils = {
-            showModal: (html) => {
-                const m = document.getElementById('global-modal');
-                m.innerHTML = `<div class="modal-overlay" onclick="if(event.target===this) Utils.closeModal()">${html}</div>`;
-                m.classList.remove('hidden');
-            },
-            closeModal: () => {
-                document.getElementById('global-modal').classList.add('hidden');
-            },
-            showMessage: (title, message) => {
-                Utils.showModal(`
-                    <div class="bg-gray-800 p-6 rounded-lg max-w-sm w-full text-center border border-gray-700 shadow-xl">
-                        <h2 class="text-xl font-bold mb-4">${title}</h2>
-                        <p class="mb-6 text-gray-300">${message}</p>
-                        <button onclick="Utils.closeModal()" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded font-bold w-full transition">OK</button>
-                    </div>
-                `);
-            },
-            escapeHTML: (str) => {
-                const p = document.createElement('p');
-                p.textContent = str;
-                return p.innerHTML;
-            },
-            getBadgesHTML: (userDoc) => {
-                if (!userDoc) return '';
-                let html = '';
-                if (userDoc.badges?.includes('verified')) html += '<i class="fa-solid fa-circle-check badge-verified ml-1" title="Zweryfikowany"></i>';
-                if (userDoc.badges?.includes('creator')) html += '<i class="fa-solid fa-shield-halved badge-creator ml-1" title="Twórca AStudio"></i>';
-                if (userDoc.role === 'admin') html += '<i class="fa-solid fa-hammer badge-admin ml-1" title="Administrator"></i>';
-                return html;
-            }
-        };
+        // --- ZEGAR ---
+        setInterval(() => {
+            document.getElementById('time-display').textContent = new Date().toLocaleTimeString('pl-PL', {hour: '2-digit', minute:'2-digit'});
+        }, 1000);
 
-        async function authenticateUser() {
-            try {
-                // Secret Admin Route Hack
-                if (window.location.hash.includes('#7319112')) {
-                    AppState.isAdminRoute = true;
-                }
+        // --- INICJALIZACJA ---
+        async function init() {
+            lucide.createIcons();
+            setupNotifications();
+            
+            document.getElementById('search-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const query = document.getElementById('city-input').value.trim();
+                if(query) await searchLocation(query);
+            });
 
-                const storedUid = SafeStorage.get('mxg_current_uid');
-                const users = LocalDB.read('users');
-
-                if (storedUid && users[storedUid]) {
-                    AppState.user = users[storedUid];
-                    
-                    // Grant admin if hack used
-                    if (AppState.isAdminRoute && AppState.user.role !== 'admin') {
-                        const newBadges = [...(AppState.user.badges||[]), 'creator', 'verified'];
-                        LocalDB.update('users', AppState.user.id, { role: 'admin', badges: newBadges });
-                        AppState.user.role = 'admin';
-                        AppState.user.badges = newBadges;
-                        Utils.showMessage('Sukces', 'Przyznano uprawnienia Administratora (LocalDB).');
-                    }
-
-                    if(checkBanStatus()) return;
-                    initializeAppUI();
-                } else {
-                    // New user setup
-                    Utils.showModal(`
-                        <div class="bg-gray-800 p-8 rounded-xl max-w-md w-full border border-gray-700">
-                            <h2 class="text-2xl font-bold mb-4 text-blue-400">Witaj w MarcinoXGames!</h2>
-                            <p class="mb-4 text-gray-300">Wybierz swój unikalny nick w grze.</p>
-                            <input type="text" id="new-username" placeholder="Twój Nick" class="w-full bg-gray-900 border border-gray-600 rounded p-3 mb-4 text-white focus:border-blue-500 outline-none">
-                            <button onclick="window.saveNewUser()" class="bg-blue-600 hover:bg-blue-500 w-full py-3 rounded font-bold transition">Zapisz i Graj</button>
-                        </div>
-                    `);
-                    return; // Wait for user to save
-                }
-
-                // Polling for global users cache (simulating onSnapshot)
-                AppState.allUsers = LocalDB.read('users');
-                AppState.syncInterval = setInterval(() => {
-                    AppState.allUsers = LocalDB.read('users');
-                    // Refresh ban status in background
-                    if (AppState.user) {
-                        const updatedMe = AppState.allUsers[AppState.user.id];
-                        if (updatedMe) AppState.user = updatedMe;
-                        if(checkBanStatus() && document.getElementById('main-nav').classList.contains('hidden') === false) {
-                            window.location.reload();
-                        }
-                    }
-                }, 2000);
-
-            } catch (error) {
-                console.error("Auth error:", error);
-                Utils.showMessage("Błąd Autoryzacji", "Nie udało się załadować danych lokalnych.");
-            }
+            document.getElementById('gps-btn').addEventListener('click', () => requestLocation(false));
+            
+            // Start aplikacji z odpytaniem
+            requestLocation(true);
+            renderTester();
         }
 
-        window.saveNewUser = async () => {
-            const username = document.getElementById('new-username').value.trim();
-            if (username.length < 3) {
-                alert("Nick musi mieć minimum 3 znaki."); 
+        // --- SYSTEM POWIADOMIEŃ PUSH ---
+        function setupNotifications() {
+            const btn = document.getElementById('notify-btn');
+            const icon = document.getElementById('bell-icon');
+
+            if (!("Notification" in window)) {
+                btn.style.display = 'none'; // Przeglądarka nie wspiera
                 return;
             }
-            const uid = 'usr_' + Date.now() + Math.random().toString(36).substr(2, 5);
-            const userData = {
-                id: uid,
-                username: username,
-                role: AppState.isAdminRoute ? 'admin' : 'player',
-                badges: AppState.isAdminRoute ? ['creator', 'verified'] : [],
-                friends: [],
-                warnings: 0,
-                isBanned: false,
-                banReason: '',
-                banUntil: null,
-                createdAt: Date.now()
-            };
-            
-            LocalDB.setDoc('users', uid, userData);
-            SafeStorage.set('mxg_current_uid', uid);
-            
-            AppState.user = userData;
-            AppState.allUsers = LocalDB.read('users');
-            Utils.closeModal();
-            initializeAppUI();
-        };
 
-        window.logoutUser = () => {
-            SafeStorage.set('mxg_current_uid', ''); // Usuń ID z pamięci
-            window.location.hash = ''; // Wyczyść link
-            window.location.reload(); // Odśwież stronę, aby pokazać panel logowania
-        };
-
-        function checkBanStatus() {
-            if (!AppState.user) return false;
-            if (AppState.user.isBanned) {
-                if (AppState.user.banUntil && AppState.user.banUntil < Date.now()) {
-                    // Ban expired
-                    LocalDB.update('users', AppState.user.id, { isBanned: false, warnings: 0 });
-                    AppState.user.isBanned = false;
-                    return false;
-                }
-                document.body.innerHTML = `
-                    <div class="h-screen w-screen bg-red-950 flex flex-col items-center justify-center text-white p-6 text-center">
-                        <div class="bg-gray-900 border-2 border-red-600 rounded-2xl p-10 max-w-2xl shadow-2xl shadow-red-900/50">
-                            <h1 class="text-6xl font-black mb-6 text-red-500 drop-shadow-lg"><i class="fa-solid fa-ban"></i> KONTO ZABLOKOWANE</h1>
-                            <p class="text-2xl mb-4 text-gray-200">Twoje konto zostało zawieszone przez Administratora lub Automod.</p>
-                            <div class="bg-black/50 p-6 rounded-lg mb-8 border border-red-900/50">
-                                <p class="text-gray-400 text-lg mb-2">Powód nałożenia kary:</p>
-                                <p class="text-xl font-bold text-white">${AppState.user.banReason || 'Naruszenie regulaminu platformy MarcinoXGames'}</p>
-                            </div>
-                            ${AppState.user.banUntil ? `<p class="mb-8 font-bold text-2xl">Blokada wygasa: <span class="text-yellow-400">${new Date(AppState.user.banUntil).toLocaleString()}</span></p>` : '<p class="mb-8 font-bold text-2xl text-red-400">Nałożono permabana (Blokada trwała).</p>'}
-                            <button onclick="window.logoutUser()" class="bg-gray-800 hover:bg-gray-700 border border-gray-600 px-8 py-4 rounded-full font-bold text-xl transition shadow-xl w-full max-w-sm mx-auto flex items-center justify-center gap-3">
-                                <i class="fa-solid fa-right-from-bracket"></i> Wyloguj się
-                            </button>
-                        </div>
-                    </div>
-                `;
-                return true;
+            if (Notification.permission === "granted") {
+                icon.classList.remove('bell-shake');
+                icon.classList.add('text-green-400');
+            } else if (Notification.permission === "denied") {
+                icon.classList.remove('bell-shake');
+                icon.classList.add('text-red-400');
             }
-            return false;
+
+            btn.addEventListener('click', () => {
+                if (Notification.permission === "default" || Notification.permission === "denied") {
+                    Notification.requestPermission().then(permission => {
+                        if (permission === "granted") {
+                            icon.classList.remove('bell-shake');
+                            icon.classList.add('text-green-400');
+                            new Notification("Powiadomienia włączone!", { body: "Będziemy informować Cię o zagrożeniach." });
+                        }
+                    });
+                } else if (Notification.permission === "granted") {
+                    new Notification("Zarządzanie", { body: "Powiadomienia są już aktywne!" });
+                }
+            });
         }
 
-        function initializeAppUI() {
-            if(checkBanStatus()) return;
-            document.getElementById('main-nav').classList.remove('hidden');
-            document.getElementById('app-content').classList.remove('hidden');
-            updateNavUI();
-            handleRoute();
-            window.addEventListener('hashchange', handleRoute);
-        }
+        function triggerPushNotification(alertsArray) {
+            if (!("Notification" in window) || Notification.permission !== "granted" || alertsArray.length === 0) return;
 
-        function updateNavUI() {
-            if (!AppState.user) return;
-            const nav = document.getElementById('nav-user-section');
-            let adminBtn = AppState.user.role === 'admin' ? `<a href="#admin" class="bg-red-600 hover:bg-red-500 px-3 py-1 rounded font-bold text-sm transition"><i class="fa-solid fa-shield"></i> Admin Panel</a>` : '';
+            // Złączenie wszystkich alertów w jedną wiadomość
+            const bodyText = alertsArray.map(a => `⚠️ ${a}`).join(" | ");
             
-            nav.innerHTML = `
-                ${adminBtn}
-                <a href="#profile/${AppState.user.id}" class="flex items-center gap-2 hover:bg-gray-800 p-2 rounded transition">
-                    <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold">${AppState.user.username.charAt(0).toUpperCase()}</div>
-                    <span class="font-bold">${Utils.escapeHTML(AppState.user.username)}${Utils.getBadgesHTML(AppState.user)}</span>
-                </a>
-                <a href="#settings" class="text-gray-400 hover:text-white transition" title="Ustawienia"><i class="fa-solid fa-gear"></i></a>
-                <div class="w-px h-6 bg-gray-700 mx-1"></div>
-                <button onclick="window.logoutUser()" class="text-gray-400 hover:text-red-500 transition px-2" title="Wyloguj się"><i class="fa-solid fa-right-from-bracket"></i></button>
+            new Notification(`Centrum Pogodowe planexd_0`, {
+                body: bodyText,
+                icon: "https://cdn-icons-png.flaticon.com/512/1164/1164954.png"
+            });
+        }
+
+        // Testowy przycisk dla testera na dole
+        window.testPushNotification = function() {
+            if (!("Notification" in window)) return alert("Przeglądarka nie wspiera powiadomień.");
+            if (Notification.permission !== "granted") return alert("Najpierw zezwól na powiadomienia (Ikonka dzwonka na górze)!");
+            
+            triggerPushNotification(["ALARM TORNADO - Wiatr 120km/h", "RYZYKO ZALAŃ - Potężne ulewy", "Opad niszczycielskiego gradu"]);
+        }
+
+
+        // --- LOKALIZACJA I WYSZUKIWANIE ---
+        function requestLocation(isSilent = false) {
+            if ("geolocation" in navigator) {
+                if(!isSilent) document.getElementById('gps-status').textContent = "(Proszę o uprawnienia...)";
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        lat = pos.coords.latitude;
+                        lon = pos.coords.longitude;
+                        cityName = "Twoja lokalizacja (GPS)";
+                        document.getElementById('gps-status').textContent = "(GPS Aktywny)";
+                        fetchWeatherData();
+                    },
+                    (err) => {
+                        console.warn("GPS zablokowany.");
+                        if(!isSilent) alert("Brak dostępu do GPS. Upewnij się, że używasz połączenia HTTPS.");
+                        if(cityName === "Warszawa" && isSilent) fetchWeatherData();
+                    },
+                    { enableHighAccuracy: true, timeout: 5000 }
+                );
+            } else {
+                fetchWeatherData();
+            }
+        }
+
+        async function searchLocation(query) {
+            try {
+                const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=pl&format=json`);
+                const data = await res.json();
+                
+                if (data.results && data.results.length > 0) {
+                    lat = data.results[0].latitude;
+                    lon = data.results[0].longitude;
+                    cityName = data.results[0].name + (data.results[0].admin1 ? `, ${data.results[0].admin1}` : '');
+                    document.getElementById('gps-status').textContent = "";
+                    document.getElementById('city-input').value = "";
+                    fetchWeatherData();
+                } else {
+                    alert("Nie znaleziono takiego miasta.");
+                }
+            } catch (err) {
+                console.error("Błąd wyszukiwania:", err);
+            }
+        }
+
+        // --- GŁÓWNA FUNKCJA POBIERAJĄCA POGODĘ ---
+        async function fetchWeatherData() {
+            document.getElementById('location-text').textContent = cityName;
+            
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&timezone=auto&forecast_days=16`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                updateUI(data);
+                generateAlerts(data);
+                updateForecast(data);
+                initRadarMap(); // Aktywuje mapę satelitarną i "zoom z kosmosu"
+            } catch (error) {
+                console.error("Błąd API:", error);
+            }
+        }
+
+        function updateUI(data) {
+            const current = data.current;
+            const today = data.daily;
+            
+            let wData = weatherCodes[current.weather_code] || { desc: 'Zmiennie', icon: 'cloud', bg: nightBg };
+            let iconName = wData.icon;
+            
+            const isNight = current.is_day === 0;
+            if (isNight && iconName === 'sun') iconName = 'moon';
+            if (isNight && iconName === 'cloud-sun') iconName = 'cloud-moon';
+            
+            document.body.style.background = isNight && current.weather_code <= 3 ? nightBg : wData.bg;
+            document.body.style.backgroundSize = "200% 200%";
+
+            document.getElementById('current-temp').innerHTML = `${Math.round(current.temperature_2m)}<span class="text-4xl text-white/60 align-top">°C</span>`;
+            document.getElementById('current-desc').textContent = wData.desc;
+            document.getElementById('current-wind').textContent = `${current.wind_speed_10m} km/h`;
+            document.getElementById('current-humidity').textContent = `${current.relative_humidity_2m} %`;
+            
+            const formatTime = (iso) => new Date(iso).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('sunrise-time').textContent = formatTime(today.sunrise[0]);
+            document.getElementById('sunset-time').textContent = formatTime(today.sunset[0]);
+
+            document.getElementById('current-icon-container').innerHTML = `<i data-lucide="${iconName}" class="w-20 h-20"></i>`;
+            document.getElementById('current-bg-icon').innerHTML = `<i data-lucide="${iconName}" class="w-full h-full"></i>`;
+            lucide.createIcons();
+        }
+
+        function generateAlerts(data) {
+            const code = data.current.weather_code;
+            const wind = data.current.wind_speed_10m;
+            const container = document.getElementById('alerts-container');
+            let alertsHtml = '';
+            let pushMessages = []; // Tabela zbierająca powiadomienia Push
+
+            if (wind >= 100) {
+                alertsHtml += createAlert('🔴 ALARM WICHUROWY / TORNADO', 'Wiatr ponad 100 km/h. Zostań w bezpiecznym budynku!', 'alert-triangle');
+                pushMessages.push('TORNADO / Huraganowy wiatr!');
+            } else if (wind >= 65) {
+                alertsHtml += createAlert('⚠️ Ostrzeżenie przed wiatrem', `Porywy do ${Math.round(wind)} km/h.`, 'wind');
+                pushMessages.push('Silny wiatr');
+            }
+
+            if (code >= 95) {
+                alertsHtml += createAlert('🌩️ ALERT BURZOWY', "Możliwe opady niszczycielskiego gradu i pioruny!", 'cloud-lightning');
+                pushMessages.push('Groźna Burza / Grad');
+            }
+
+            if (code === 65 || code === 82) {
+                alertsHtml += createAlert('🌊 Ryzyko zalań', 'Bardzo intensywne opady ulewne.', 'cloud-showers-heavy');
+                pushMessages.push('Ulewa / Powódź');
+            }
+
+            if (alertsHtml !== '') {
+                container.innerHTML = alertsHtml;
+                container.classList.remove('hidden');
+                container.classList.add('flex');
+                
+                // Wysyłanie jednego powiadomienia po odświeżeniu
+                triggerPushNotification(pushMessages);
+            } else {
+                container.classList.add('hidden');
+            }
+            lucide.createIcons();
+        }
+
+        function createAlert(title, message, icon) {
+            return `
+                <div class="alert-active p-5 rounded-2xl flex items-center gap-5 text-white shadow-2xl">
+                    <div class="bg-white/20 p-3 rounded-full flex-shrink-0">
+                        <i data-lucide="${icon}" class="w-8 h-8"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-extrabold text-lg tracking-wide">${title}</h3>
+                        <p class="text-sm text-red-100 mt-1 font-medium">${message}</p>
+                    </div>
+                </div>
             `;
         }
 
-        const Views = {
-            renderHome: async () => {
-                const content = document.getElementById('app-content');
-                content.innerHTML = `<h1 class="text-3xl font-bold mb-6">Odkryj Gry</h1><div id="games-grid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">Ładowanie gier...</div>`;
-                
-                const renderGames = () => {
-                    const games = LocalDB.read('games');
-                    const grid = document.getElementById('games-grid');
-                    if(!grid) return;
-                    grid.innerHTML = '';
-                    
-                    const gameKeys = Object.keys(games);
-                    if(gameKeys.length === 0) {
-                        grid.innerHTML = '<p class="text-gray-400">Brak opublikowanych gier. Stwórz coś w AStudio!</p>';
-                        return;
-                    }
-                    
-                    gameKeys.forEach(id => {
-                        const game = games[id];
-                        const creatorName = AppState.allUsers[game.creatorId]?.username || 'Nieznany';
-                        grid.innerHTML += `
-                            <div class="bg-gray-800 rounded-lg overflow-hidden border border-gray-700 hover:border-blue-500 transition cursor-pointer flex flex-col h-full" onclick="window.location.hash='#game/${id}'">
-                                <div class="h-40 bg-gray-700 flex items-center justify-center relative">
-                                    <i class="fa-solid fa-gamepad text-5xl text-gray-500"></i>
-                                    <div class="absolute bottom-2 right-2 bg-black/60 px-2 py-1 rounded text-xs"><i class="fa-solid fa-users"></i> ${game.playersCount || 0}</div>
-                                </div>
-                                <div class="p-4 flex-1 flex flex-col">
-                                    <h3 class="font-bold text-lg mb-1 truncate">${Utils.escapeHTML(game.title)}</h3>
-                                    <p class="text-sm text-gray-400 mb-4 flex-1">${Utils.escapeHTML(game.description || 'Brak opisu')}</p>
-                                    <p class="text-xs text-gray-500">Twórca: <span class="text-blue-400">${Utils.escapeHTML(creatorName)}</span></p>
-                                </div>
-                            </div>
-                        `;
-                    });
-                };
-                
-                renderGames();
-                // Polling for new games
-                Views.homeInterval = setInterval(renderGames, 3000);
-            },
-
-            renderProfile: async (userId) => {
-                const content = document.getElementById('app-content');
-                const users = LocalDB.read('users');
-                const profile = users[userId];
-
-                if (!profile) {
-                    content.innerHTML = '<h2>Nie znaleziono profilu</h2>';
-                    return;
-                }
-                const isMe = userId === AppState.user.id;
-                
-                content.innerHTML = `
-                    <div class="max-w-3xl mx-auto">
-                        <div class="bg-gray-800 rounded-xl p-8 flex flex-col md:flex-row items-center gap-8 border border-gray-700 relative overflow-hidden">
-                            <div class="absolute top-0 left-0 w-full h-32 bg-gradient-to-r from-blue-900 to-purple-900 opacity-50"></div>
-                            <div class="w-32 h-32 rounded-full bg-gray-700 border-4 border-gray-800 flex items-center justify-center text-5xl font-bold z-10 shadow-lg">
-                                ${profile.username.charAt(0).toUpperCase()}
-                            </div>
-                            <div class="z-10 text-center md:text-left flex-1">
-                                <h1 class="text-4xl font-bold mb-2 flex items-center justify-center md:justify-start gap-2">
-                                    ${Utils.escapeHTML(profile.username)}
-                                    <span class="text-2xl">${Utils.getBadgesHTML(profile)}</span>
-                                </h1>
-                                <p class="text-gray-400 mb-4">Dołączył: ${profile.createdAt ? new Date(profile.createdAt).toLocaleDateString() : 'Dawno temu'}</p>
-                                
-                                ${!isMe ? `
-                                    <button class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-full font-bold transition shadow-lg shadow-blue-500/20">
-                                        <i class="fa-solid fa-user-plus mr-2"></i>Dodaj do znajomych
-                                    </button>
-                                    <button onclick="window.location.hash='#report_user/${userId}'" class="bg-gray-700 hover:bg-red-600 px-4 py-2 rounded-full font-bold transition ml-2 text-sm" title="Zgłoś gracza">
-                                        <i class="fa-solid fa-flag"></i>
-                                    </button>
-                                ` : `
-                                    <a href="#settings" class="bg-gray-700 hover:bg-gray-600 px-6 py-2 rounded-full font-bold transition">Edytuj profil</a>
-                                `}
-                            </div>
-                        </div>
-                    </div>
-                `;
-            },
-
-            renderAdminPanel: async () => {
-                if(AppState.user.role !== 'admin') {
-                    window.location.hash = '#home';
-                    return;
-                }
-                const content = document.getElementById('app-content');
-                content.innerHTML = `
-                    <div class="max-w-6xl mx-auto">
-                        <h1 class="text-3xl font-bold mb-6 text-red-500"><i class="fa-solid fa-shield"></i> Panel Administratora (Local DB)</h1>
-                        
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                            <!-- Akcje Mod -->
-                            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                                <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2">Narzędzia Moderacji</h2>
-                                <div class="space-y-4">
-                                    <div>
-                                        <label class="block text-sm mb-1 text-gray-400">Banowanie Gracza (Nick)</label>
-                                        <div class="flex gap-2">
-                                            <input type="text" id="admin-ban-nick" class="flex-1 bg-gray-900 border border-gray-600 rounded p-2 text-white" placeholder="Nick gracza">
-                                            <input type="number" id="admin-ban-days" class="w-24 bg-gray-900 border border-gray-600 rounded p-2 text-white" placeholder="Dni">
-                                            <button onclick="AdminLogic.banUser()" class="bg-red-600 hover:bg-red-500 px-4 py-2 rounded font-bold">Banuj</button>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label class="block text-sm mb-1 text-gray-400">Nadaj Verified Badge (Nick)</label>
-                                        <div class="flex gap-2">
-                                            <input type="text" id="admin-badge-nick" class="flex-1 bg-gray-900 border border-gray-600 rounded p-2 text-white" placeholder="Nick gracza">
-                                            <button onclick="AdminLogic.giveVerified()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold">Nadaj Odznakę</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Statystyki -->
-                            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                                <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2">Lokalne Statystyki</h2>
-                                <p id="admin-stats">Ładowanie...</p>
-                            </div>
-                        </div>
-
-                        <!-- Zgłoszenia -->
-                        <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                            <h2 class="text-xl font-bold mb-4 border-b border-gray-700 pb-2 flex justify-between items-center">
-                                Zgłoszenia (Raporty)
-                            </h2>
-                            <div class="overflow-x-auto">
-                                <table class="w-full text-left border-collapse">
-                                    <thead>
-                                        <tr class="bg-gray-900 text-gray-400 text-sm">
-                                            <th class="p-3">Data</th>
-                                            <th class="p-3">Typ</th>
-                                            <th class="p-3">Zgłaszający</th>
-                                            <th class="p-3">Cel</th>
-                                            <th class="p-3">Powód</th>
-                                            <th class="p-3">Kontekst (Chat)</th>
-                                            <th class="p-3">Akcja</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="admin-reports-list" class="divide-y divide-gray-700">
-                                        <tr><td colspan="7" class="p-3 text-center text-gray-500">Ładowanie zgłoszeń...</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                `;
-
-                const renderAdminData = () => {
-                    const reports = LocalDB.read('reports');
-                    const users = LocalDB.read('users');
-                    const games = LocalDB.read('games');
-                    
-                    document.getElementById('admin-stats').innerHTML = `
-                        Użytkownicy: <span class="text-blue-400">${Object.keys(users).length}</span><br>
-                        Gry: <span class="text-green-400">${Object.keys(games).length}</span><br>
-                        Zgłoszenia: <span class="text-red-400">${Object.keys(reports).length}</span>
-                    `;
-
-                    const list = document.getElementById('admin-reports-list');
-                    if(!list) return;
-                    list.innerHTML = '';
-                    
-                    const reportKeys = Object.keys(reports);
-                    if(reportKeys.length === 0) list.innerHTML = '<tr><td colspan="7" class="p-3 text-center text-green-500">Brak aktywnych zgłoszeń! Śpisz spokojnie.</td></tr>';
-                    
-                    reportKeys.forEach(rId => {
-                        const r = reports[rId];
-                        let contextHTML = '-';
-                        if(r.chatContext && r.chatContext.length > 0) {
-                            contextHTML = `<button onclick='Utils.showMessage("Logi chatu (10s)", "${Utils.escapeHTML(JSON.stringify(r.chatContext.map(c=>c.senderName+": "+c.text)))}")' class="text-blue-400 underline">Zobacz logi</button>`;
-                        }
-
-                        list.innerHTML += `
-                            <tr class="hover:bg-gray-700/50 transition">
-                                <td class="p-3 text-sm">${new Date(r.timestamp).toLocaleString()}</td>
-                                <td class="p-3"><span class="bg-red-900/50 text-red-400 border border-red-800 px-2 py-1 rounded text-xs font-bold uppercase">${r.type}</span></td>
-                                <td class="p-3">${Utils.escapeHTML(r.reporterName || 'Nieznany')}</td>
-                                <td class="p-3 text-yellow-400">${Utils.escapeHTML(r.targetId)}</td>
-                                <td class="p-3">${Utils.escapeHTML(r.reason)}</td>
-                                <td class="p-3">${contextHTML}</td>
-                                <td class="p-3">
-                                    <button onclick="AdminLogic.deleteReport('${rId}')" class="text-gray-400 hover:text-white mx-1" title="Usuń zgłoszenie"><i class="fa-solid fa-trash"></i></button>
-                                </td>
-                            </tr>
-                        `;
-                    });
-                };
-
-                renderAdminData();
-                Views.adminInterval = setInterval(renderAdminData, 3000);
-            }
-        };
-
-        window.AdminLogic = {
-            findUserIdByNick: (nick) => {
-                for (const [id, data] of Object.entries(AppState.allUsers)) {
-                    if (data.username.toLowerCase() === nick.toLowerCase()) return id;
-                }
-                return null;
-            },
-            banUser: async () => {
-                const nick = document.getElementById('admin-ban-nick').value;
-                const days = document.getElementById('admin-ban-days').value;
-                const uid = AdminLogic.findUserIdByNick(nick);
-                if(!uid) return Utils.showMessage('Błąd', 'Nie znaleziono gracza.');
-                
-                let banUntil = null;
-                if(days && parseInt(days) > 0) {
-                    banUntil = Date.now() + parseInt(days) * 24 * 60 * 60 * 1000;
-                }
-                
-                LocalDB.update('users', uid, {
-                    isBanned: true,
-                    banReason: 'Zablokowany przez Administratora',
-                    banUntil: banUntil
-                });
-                Utils.showMessage('Sukces', `Gracz ${nick} został zbanowany.`);
-            },
-            giveVerified: async () => {
-                const nick = document.getElementById('admin-badge-nick').value;
-                const uid = AdminLogic.findUserIdByNick(nick);
-                if(!uid) return Utils.showMessage('Błąd', 'Nie znaleziono gracza.');
-                
-                const user = AppState.allUsers[uid];
-                let badges = user.badges || [];
-                if(!badges.includes('verified')) badges.push('verified');
-                
-                LocalDB.update('users', uid, { badges: badges });
-                Utils.showMessage('Sukces', `Odznaka nadana dla ${nick}.`);
-            },
-            deleteReport: async (id) => {
-                LocalDB.delete('reports', id);
-            }
-        };
-
-        function handleRoute() {
-            if(checkBanStatus()) return;
-            const hash = window.location.hash;
-
-            // Tajny kod Administratora w locie
-            if (hash === '#7319112') {
-                if (AppState.user && AppState.user.role !== 'admin') {
-                    const newBadges = [...(AppState.user.badges||[])];
-                    if(!newBadges.includes('creator')) newBadges.push('creator');
-                    if(!newBadges.includes('verified')) newBadges.push('verified');
-                    
-                    LocalDB.update('users', AppState.user.id, { role: 'admin', badges: newBadges });
-                    AppState.user.role = 'admin';
-                    AppState.user.badges = newBadges;
-                    updateNavUI();
-                    Utils.showMessage('Sekret Odblokowany', 'Przyznano uprawnienia Administratora (Tajny Kod).');
-                }
-                window.location.hash = '#admin';
-                return;
-            }
-
-            document.getElementById('app-content').classList.remove('hidden');
-            document.getElementById('game-container').style.display = 'none';
-            document.getElementById('main-nav').classList.remove('hidden');
-
-            if (GameEngine.isRunning) GameEngine.stop();
-            if (StudioEngine.isRunning) StudioEngine.stop();
-            if (Views.homeInterval) clearInterval(Views.homeInterval);
-            if (Views.adminInterval) clearInterval(Views.adminInterval);
-
-            if (hash === '' || hash === '#home') Views.renderHome();
-            else if (hash.startsWith('#profile/')) Views.renderProfile(hash.split('/')[1]);
-            else if (hash === '#settings') Views.renderHome(); 
-            else if (hash === '#admin') Views.renderAdminPanel();
-            else if (hash === '#studio') StudioUI.init();
-            else if (hash.startsWith('#game/')) {
-                document.getElementById('app-content').classList.add('hidden');
-                document.getElementById('main-nav').classList.add('hidden');
-                document.getElementById('game-container').style.display = 'block';
-                GameEngine.start(hash.split('/')[1]);
-            }
-            else {
-                Views.renderHome();
-            }
+        function renderTester() {
+            const container = document.getElementById('tester-container');
+            container.innerHTML = 
+                createAlert('🔴 ALARM WICHUROWY / TORNADO', 'Zagrożenie życia. Wiatr ponad 100 km/h.', 'alert-triangle') +
+                createAlert('🌩️ ALERT BURZOWY', 'Wykryto wyładowania atmosferyczne.', 'cloud-lightning');
         }
 
-        const Automod = {
-            badWords: ['kurwa', 'jeb', 'spier', 'chuj', 'pizd', 'dziwk'],
-            checkMessage: (text) => {
-                const lower = text.toLowerCase();
-                if (lower.includes('http://') || lower.includes('https://') || lower.includes('.com') || lower.includes('.pl')) {
-                    return 'Zabronione linki';
-                }
-                for(let word of Automod.badWords) {
-                    if (lower.includes(word)) return 'Wulgaryzmy';
-                }
-                return null; // OK
-            },
-            issueWarning: async () => {
-                const currentWarnings = (AppState.user.warnings || 0) + 1;
-                if (currentWarnings >= 3) {
-                    LocalDB.update('users', AppState.user.id, { warnings: currentWarnings, isBanned: true, banReason: 'Automatyczny ban za 3 ostrzeżenia (Automod)' });
-                    window.location.reload();
-                } else {
-                    LocalDB.update('users', AppState.user.id, { warnings: currentWarnings });
-                    AppState.user.warnings = currentWarnings;
-                }
-            }
-        };
+        function updateForecast(data) {
+            const daily = data.daily;
+            const container = document.getElementById('forecast-container');
+            container.innerHTML = '';
 
-        const ChatManager = {
-            messages: [],
-            lastProcessedMsgId: null,
-            init: (gameId) => {
-                ChatManager.gameId = gameId;
-                ChatManager.messages = [];
-                const chatInput = document.getElementById('chat-input');
-                const chatBox = document.getElementById('chat-messages');
-                chatBox.innerHTML = '';
-                
-                chatInput.onkeydown = (e) => {
-                    if(e.key === 'Enter' && chatInput.value.trim() !== '') {
-                        ChatManager.sendMessage(chatInput.value.trim());
-                        chatInput.value = '';
-                    }
-                    e.stopPropagation(); // Prevent ThreeJS input
-                };
-            },
-            sendMessage: async (text) => {
-                const violation = Automod.checkMessage(text);
-                if (violation) {
-                    ChatManager.localSystemMessage(`Ostrzeżenie: Wykryto naruszenie regulaminu (${violation}). System zlicza ostrzeżenia!`);
-                    Automod.issueWarning();
-                    return;
-                }
+            for (let i = 1; i < daily.time.length; i++) {
+                const dateObj = new Date(daily.time[i]);
+                const dayName = i === 1 ? 'Jutro' : dateObj.toLocaleDateString('pl-PL', { weekday: 'long' });
+                const dateNum = dateObj.toLocaleDateString('pl-PL', { day: 'numeric', month: '2-digit' });
+                const wData = weatherCodes[daily.weather_code[i]] || { desc: 'Zmiennie', icon: 'cloud' };
+                const min = Math.round(daily.temperature_2m_min[i]);
+                const max = Math.round(daily.temperature_2m_max[i]);
 
-                const msg = {
-                    senderId: AppState.user.id,
-                    senderName: AppState.user.username,
-                    text: text,
-                    timestamp: Date.now()
-                };
-                
-                // Write to LocalDB Chat (simulating server broadcast)
-                LocalDB.add('chat_' + ChatManager.gameId, msg);
-            },
-            localSystemMessage: (text) => {
-                const box = document.getElementById('chat-messages');
-                box.innerHTML = `<div class="text-red-400 font-bold">[SYSTEM] ${Utils.escapeHTML(text)}</div>` + box.innerHTML;
-            },
-            receiveMessage: (msg) => {
-                ChatManager.messages.push(msg);
-                if(ChatManager.messages.length > 50) ChatManager.messages.shift();
-                
-                const box = document.getElementById('chat-messages');
-                const isMe = msg.senderId === AppState.user.id;
-                box.innerHTML = `<div><span class="font-bold ${isMe ? 'text-blue-400' : 'text-gray-300'}">[${Utils.escapeHTML(msg.senderName)}]</span>: <span class="text-white">${Utils.escapeHTML(msg.text)}</span></div>` + box.innerHTML;
-            },
-            getRecentContext: () => {
-                const tenSecAgo = Date.now() - 10000;
-                return ChatManager.messages.filter(m => m.timestamp >= tenSecAgo);
-            }
-        };
-
-        window.GameUI = {
-            init: () => {
-                document.addEventListener('keydown', GameUI.handleKeys);
-            },
-            cleanup: () => {
-                document.removeEventListener('keydown', GameUI.handleKeys);
-            },
-            handleKeys: (e) => {
-                if(!GameEngine.isRunning) return;
-                if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-
-                if (e.key === 'Escape') {
-                    const menu = document.getElementById('esc-menu');
-                    menu.classList.toggle('hidden');
-                    if(!menu.classList.contains('hidden')) document.exitPointerLock();
-                }
-                if (e.key === 'Tab') {
-                    e.preventDefault();
-                    GameUI.toggleTabMenu(true);
-                }
-                
-                if (!document.getElementById('esc-menu').classList.contains('hidden')) {
-                    if (e.key.toLowerCase() === 'l') GameUI.leaveGame();
-                    if (e.key.toLowerCase() === 'r') GameEngine.resetCharacter();
-                    if (e.key.toLowerCase() === 'e') GameUI.resumeGame();
-                }
-            },
-            resumeGame: () => {
-                document.getElementById('esc-menu').classList.add('hidden');
-                document.getElementById('game-canvas').requestPointerLock();
-            },
-            leaveGame: () => {
-                GameEngine.stop();
-                window.location.hash = '#home';
-            },
-            toggleTabMenu: (forceShow) => {
-                const menu = document.getElementById('tab-menu');
-                if (forceShow === true) {
-                    menu.classList.remove('hidden');
-                    GameUI.renderPlayerList();
-                    const hideTab = (upEvent) => {
-                        if(upEvent.key === 'Tab') {
-                            menu.classList.add('hidden');
-                            document.removeEventListener('keyup', hideTab);
-                        }
-                    };
-                    document.addEventListener('keyup', hideTab);
-                }
-            },
-            renderPlayerList: () => {
-                const list = document.getElementById('tab-player-list');
-                list.innerHTML = '';
-                list.innerHTML += `<li class="flex justify-between items-center bg-gray-800 p-2 rounded">
-                    <span class="font-bold text-blue-400">${Utils.escapeHTML(AppState.user.username)} (Ty)</span>
-                </li>`;
-                
-                for (const [id, pdata] of Object.entries(GameEngine.players)) {
-                    const uData = AppState.allUsers[id] || { username: 'Gość' };
-                    list.innerHTML += `
-                        <li class="flex justify-between items-center bg-gray-800 p-2 rounded">
-                            <span class="font-bold">${Utils.escapeHTML(uData.username)}${Utils.getBadgesHTML(uData)}</span>
-                            <button onclick="window.open('#profile/${id}')" class="text-xs bg-blue-600 px-2 py-1 rounded">Profil</button>
-                        </li>
-                    `;
-                }
-            },
-            showReportModal: () => {
-                GameUI.resumeGame();
-                document.exitPointerLock();
-                
-                let playerOpts = '<option value="game">Gra/Serwer</option>';
-                for (const id of Object.keys(GameEngine.players)) {
-                    playerOpts += `<option value="${id}">${AppState.allUsers[id]?.username || id}</option>`;
-                }
-
-                Utils.showModal(`
-                    <div class="bg-gray-800 p-6 rounded-lg max-w-md w-full border border-gray-700">
-                        <h2 class="text-2xl font-bold mb-4 text-red-500">Zgłoś Nadużycie</h2>
-                        
-                        <label class="block text-sm mb-1 text-gray-400">Kogo/Co zgłaszasz?</label>
-                        <select id="report-target" class="w-full bg-gray-900 border border-gray-600 rounded p-2 mb-4 text-white">
-                            ${playerOpts}
-                        </select>
-
-                        <label class="block text-sm mb-1 text-gray-400">Powód</label>
-                        <select id="report-reason" class="w-full bg-gray-900 border border-gray-600 rounded p-2 mb-4 text-white">
-                            <option value="Wulgaryzmy/Spam">Wulgaryzmy / Spam</option>
-                            <option value="Cheaty/Exploity">Cheaty / Exploity</option>
-                            <option value="Obraza">Obraza / Nękanie</option>
-                            <option value="Inne">Inne (Opisz poniżej)</option>
-                        </select>
-                        
-                        <textarea id="report-desc" class="w-full bg-gray-900 border border-gray-600 rounded p-2 mb-4 text-white" rows="3" placeholder="Dodatkowe informacje..."></textarea>
-                        
-                        <div class="flex justify-end gap-2 mt-4">
-                            <button onclick="Utils.closeModal()" class="bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded">Anuluj</button>
-                            <button onclick="GameUI.submitReport()" class="bg-red-600 hover:bg-red-500 px-4 py-2 rounded font-bold">Wyślij Zgłoszenie</button>
+                const card = `
+                    <div class="bg-black/20 backdrop-blur-md border border-white/10 p-5 rounded-2xl flex-shrink-0 w-40 flex flex-col items-center justify-between text-center transition-all duration-300 hover:bg-black/40 hover:-translate-y-2 hover:shadow-xl cursor-default">
+                        <div class="w-full border-b border-white/10 pb-2 mb-3">
+                            <p class="font-bold text-white capitalize text-sm">${dayName}</p>
+                            <p class="text-xs text-gray-400 mt-1">${dateNum}</p>
                         </div>
-                    </div>
-                `);
-            },
-            submitReport: async () => {
-                const target = document.getElementById('report-target').value;
-                const reason = document.getElementById('report-reason').value;
-                const desc = document.getElementById('report-desc').value;
-                
-                const report = {
-                    reporterId: AppState.user.id,
-                    reporterName: AppState.user.username,
-                    targetId: target,
-                    type: target === 'game' ? 'GAME_REPORT' : 'USER_REPORT',
-                    reason: reason + " - " + desc,
-                    timestamp: Date.now(),
-                    chatContext: ChatManager.getRecentContext() // 10s chat history!
-                };
-
-                LocalDB.add('reports', report);
-                Utils.closeModal();
-                ChatManager.localSystemMessage("Zgłoszenie zapisane w bazie lokalnej (Admin Panel).");
-            }
-        };
-
-        window.GameEngine = {
-            isRunning: false,
-            gameId: null,
-            scene: null,
-            camera: null,
-            renderer: null,
-            animationId: null,
-            players: {}, 
-            
-            playerBox: null,
-            keys: { w:false, a:false, s:false, d:false, space:false },
-            velocity: new THREE.Vector3(),
-            direction: new THREE.Vector3(),
-            canJump: false,
-            
-            start: async (gameId) => {
-                GameEngine.isRunning = true;
-                GameEngine.gameId = gameId;
-                GameUI.init();
-                ChatManager.init(gameId);
-                
-                document.getElementById('in-game-title').innerText = "Ładowanie środowiska...";
-
-                const canvas = document.getElementById('game-canvas');
-                GameEngine.scene = new THREE.Scene();
-                GameEngine.scene.background = new THREE.Color(0x87CEEB); 
-                GameEngine.scene.fog = new THREE.Fog(0x87CEEB, 10, 100);
-
-                GameEngine.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-                
-                GameEngine.renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-                GameEngine.renderer.setSize(window.innerWidth, window.innerHeight);
-                GameEngine.renderer.shadowMap.enabled = true;
-
-                const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444);
-                hemiLight.position.set(0, 20, 0);
-                GameEngine.scene.add(hemiLight);
-                
-                const dirLight = new THREE.DirectionalLight(0xffffff);
-                dirLight.position.set(-3, 10, -10);
-                dirLight.castShadow = true;
-                GameEngine.scene.add(dirLight);
-
-                const games = LocalDB.read('games');
-                const gameDoc = games[gameId];
-
-                if(gameDoc && gameDoc.mapData) {
-                    document.getElementById('in-game-title').innerText = gameDoc.title;
-                    GameEngine.loadMap(gameDoc.mapData);
-                } else {
-                    document.getElementById('in-game-title').innerText = "Domyślna Mapa";
-                    const geometry = new THREE.PlaneGeometry(200, 200);
-                    const material = new THREE.MeshStandardMaterial({ color: 0x4CAF50, roughness: 0.8 });
-                    const floor = new THREE.Mesh(geometry, material);
-                    floor.rotation.x = -Math.PI / 2;
-                    floor.receiveShadow = true;
-                    GameEngine.scene.add(floor);
-                }
-
-                GameEngine.camera.position.set(0, 2, 5);
-                
-                canvas.addEventListener('click', () => { if(GameEngine.isRunning) canvas.requestPointerLock(); });
-                document.addEventListener('mousemove', GameEngine.onMouseMove);
-                document.addEventListener('keydown', GameEngine.onKeyDown);
-                document.addEventListener('keyup', GameEngine.onKeyUp);
-                window.addEventListener('resize', GameEngine.onWindowResize);
-
-                GameEngine.initMultiplayer();
-                GameEngine.animate();
-            },
-            
-            loadMap: (mapData) => {
-                try {
-                    const objects = JSON.parse(mapData);
-                    objects.forEach(obj => {
-                        const geo = new THREE.BoxGeometry(obj.sx, obj.sy, obj.sz);
-                        const mat = new THREE.MeshStandardMaterial({ color: obj.color });
-                        const mesh = new THREE.Mesh(geo, mat);
-                        mesh.position.set(obj.x, obj.y, obj.z);
-                        mesh.castShadow = true;
-                        mesh.receiveShadow = true;
-                        GameEngine.scene.add(mesh);
-                    });
-                } catch(e) { console.error("Map parse error", e); }
-            },
-
-            resetCharacter: () => {
-                GameEngine.camera.position.set(0, 2, 0);
-                GameEngine.velocity.set(0,0,0);
-                GameUI.resumeGame();
-            },
-
-            onWindowResize: () => {
-                GameEngine.camera.aspect = window.innerWidth / window.innerHeight;
-                GameEngine.camera.updateProjectionMatrix();
-                GameEngine.renderer.setSize(window.innerWidth, window.innerHeight);
-            },
-
-            onMouseMove: (event) => {
-                if (document.pointerLockElement !== document.getElementById('game-canvas')) return;
-                GameEngine.camera.rotation.y -= event.movementX * 0.002;
-                GameEngine.camera.rotation.x -= event.movementY * 0.002;
-                GameEngine.camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, GameEngine.camera.rotation.x));
-                GameEngine.camera.rotation.order = 'YXZ'; 
-            },
-
-            onKeyDown: (e) => {
-                if(document.pointerLockElement !== document.getElementById('game-canvas')) return;
-                switch(e.code) {
-                    case 'KeyW': GameEngine.keys.w = true; break;
-                    case 'KeyA': GameEngine.keys.a = true; break;
-                    case 'KeyS': GameEngine.keys.s = true; break;
-                    case 'KeyD': GameEngine.keys.d = true; break;
-                    case 'Space': 
-                        if(GameEngine.canJump) { GameEngine.velocity.y += 10; GameEngine.canJump = false; }
-                        break;
-                }
-            },
-            onKeyUp: (e) => {
-                switch(e.code) {
-                    case 'KeyW': GameEngine.keys.w = false; break;
-                    case 'KeyA': GameEngine.keys.a = false; break;
-                    case 'KeyS': GameEngine.keys.s = false; break;
-                    case 'KeyD': GameEngine.keys.d = false; break;
-                }
-            },
-
-            initMultiplayer: () => {
-                // LOCAL STORAGE MULTIPLAYER P2P (Cross-tab)
-                GameEngine.syncInterval = setInterval(() => {
-                    if(!GameEngine.isRunning) return;
-                    
-                    // Write my position
-                    LocalDB.setDoc('session_' + GameEngine.gameId, AppState.user.id, {
-                        username: AppState.user.username,
-                        x: GameEngine.camera.position.x,
-                        y: GameEngine.camera.position.y,
-                        z: GameEngine.camera.position.z,
-                        ry: GameEngine.camera.rotation.y,
-                        lastSeen: Date.now()
-                    });
-
-                    // Read others
-                    const session = LocalDB.read('session_' + GameEngine.gameId);
-                    
-                    for (const pid in session) {
-                        if (pid === AppState.user.id) continue;
-                        const data = session[pid];
-                        
-                        if (Date.now() - data.lastSeen > 5000) {
-                            // Player timed out
-                            if (GameEngine.players[pid]) {
-                                GameEngine.scene.remove(GameEngine.players[pid]);
-                                delete GameEngine.players[pid];
-                                ChatManager.localSystemMessage(`Gracz ${data.username} opuścił grę.`);
-                            }
-                            continue;
-                        }
-
-                        if (!GameEngine.players[pid]) {
-                            const geo = new THREE.BoxGeometry(1, 2, 1);
-                            const mat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-                            const mesh = new THREE.Mesh(geo, mat);
-                            mesh.castShadow = true;
-                            GameEngine.scene.add(mesh);
-                            GameEngine.players[pid] = mesh;
-                            ChatManager.localSystemMessage(`Gracz ${data.username || pid} dołączył.`);
-                        }
-                        
-                        GameEngine.players[pid].position.lerp(new THREE.Vector3(data.x, data.y, data.z), 0.5);
-                        GameEngine.players[pid].rotation.y = data.ry;
-                    }
-
-                    // Polling Chat
-                    const chats = Object.values(LocalDB.read('chat_' + ChatManager.gameId))
-                                        .sort((a,b) => a.timestamp - b.timestamp);
-                    
-                    const newChats = chats.filter(c => !ChatManager.messages.find(m => m.id === c.id && m.timestamp === c.timestamp));
-                    newChats.forEach(c => ChatManager.receiveMessage(c));
-
-                }, 100); 
-            },
-
-            stop: () => {
-                GameEngine.isRunning = false;
-                cancelAnimationFrame(GameEngine.animationId);
-                clearInterval(GameEngine.syncInterval);
-                document.exitPointerLock();
-                document.removeEventListener('mousemove', GameEngine.onMouseMove);
-                document.removeEventListener('keydown', GameEngine.onKeyDown);
-                document.removeEventListener('keyup', GameEngine.onKeyUp);
-                GameUI.cleanup();
-
-                if(GameEngine.gameId && AppState.user) {
-                    LocalDB.delete('session_' + GameEngine.gameId, AppState.user.id);
-                }
-                
-                if(GameEngine.renderer) {
-                    GameEngine.renderer.dispose();
-                    GameEngine.scene.clear();
-                }
-                
-                // Clear simulated player meshes
-                GameEngine.players = {};
-            },
-
-            animate: () => {
-                if(!GameEngine.isRunning) return;
-                GameEngine.animationId = requestAnimationFrame(GameEngine.animate);
-
-                const time = performance.now();
-                if(GameEngine.prevTime) {
-                    const delta = (time - GameEngine.prevTime) / 1000;
-                    
-                    GameEngine.velocity.x -= GameEngine.velocity.x * 10.0 * delta;
-                    GameEngine.velocity.z -= GameEngine.velocity.z * 10.0 * delta;
-                    GameEngine.velocity.y -= 9.8 * 2.0 * delta; 
-
-                    GameEngine.direction.z = Number(GameEngine.keys.w) - Number(GameEngine.keys.s);
-                    GameEngine.direction.x = Number(GameEngine.keys.d) - Number(GameEngine.keys.a);
-                    GameEngine.direction.normalize(); 
-
-                    const speed = 50.0;
-                    if (GameEngine.keys.w || GameEngine.keys.s) GameEngine.velocity.z -= GameEngine.direction.z * speed * delta;
-                    if (GameEngine.keys.a || GameEngine.keys.d) GameEngine.velocity.x -= GameEngine.direction.x * speed * delta;
-
-                    const euler = new THREE.Euler(0, GameEngine.camera.rotation.y, 0, 'YXZ');
-                    const vec = new THREE.Vector3(GameEngine.velocity.x * delta, 0, GameEngine.velocity.z * delta);
-                    vec.applyEuler(euler);
-                    
-                    GameEngine.camera.position.add(vec);
-                    GameEngine.camera.position.y += (GameEngine.velocity.y * delta);
-
-                    if (GameEngine.camera.position.y < 2) {
-                        GameEngine.velocity.y = 0;
-                        GameEngine.camera.position.y = 2;
-                        GameEngine.canJump = true;
-                    }
-                }
-                GameEngine.prevTime = time;
-
-                GameEngine.renderer.render(GameEngine.scene, GameEngine.camera);
-            }
-        };
-
-        window.StudioUI = {
-            init: () => {
-                const content = document.getElementById('app-content');
-                content.innerHTML = `
-                    <div class="flex flex-col h-[calc(100vh-80px)] border-t border-gray-700 relative">
-                        <div class="bg-gray-800 p-2 flex items-center gap-2 border-b border-gray-700 z-10">
-                            <h2 class="text-xl font-bold text-yellow-400 mr-4"><i class="fa-solid fa-hammer"></i> AStudio</h2>
-                            
-                            <button onclick="StudioEngine.addPart()" class="studio-tool bg-gray-700 p-2 rounded transition" title="Dodaj Klocek (Part)"><i class="fa-solid fa-cube"></i> Part</button>
-                            <input type="color" id="studio-color" value="#4CAF50" class="w-8 h-8 rounded cursor-pointer" title="Kolor klocka">
-                            
-                            <div class="w-px h-6 bg-gray-600 mx-2"></div>
-                            
-                            <button onclick="StudioEngine.setMode('translate')" class="studio-tool bg-gray-700 p-2 rounded transition" title="Przesuń"><i class="fa-solid fa-arrows-up-down-left-right"></i></button>
-                            <button onclick="StudioEngine.setMode('scale')" class="studio-tool bg-gray-700 p-2 rounded transition" title="Skaluj"><i class="fa-solid fa-maximize"></i></button>
-                            <button onclick="StudioEngine.deleteSelected()" class="studio-tool bg-red-900/50 text-red-400 hover:bg-red-600 hover:text-white p-2 rounded transition" title="Usuń (Del)"><i class="fa-solid fa-trash"></i></button>
-                            
-                            <div class="w-px h-6 bg-gray-600 mx-2"></div>
-                            <button onclick="StudioEngine.openScriptEditor()" class="studio-tool bg-gray-700 p-2 rounded transition text-blue-400" title="LUA Script"><i class="fa-brands fa-lua"></i> Skrypt (WIP)</button>
-                            
-                            <div class="flex-1"></div>
-                            <button onclick="StudioUI.showPublishModal()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold shadow-lg"><i class="fa-solid fa-cloud-arrow-up"></i> Publikuj Grę (Lokalnie)</button>
+                        <div class="text-white drop-shadow-md my-2 transform hover:scale-110 transition-transform">
+                            <i data-lucide="${wData.icon}" class="w-12 h-12 mx-auto"></i>
                         </div>
-                        
-                        <div class="flex-1 relative bg-gray-900" id="studio-container">
-                            <canvas id="studio-canvas" class="w-full h-full block"></canvas>
+                        <div class="mt-3 w-full">
+                            <div class="flex justify-center items-center text-base font-bold mb-1 gap-2">
+                                <span class="text-blue-200">${min}°</span>
+                                <span class="text-white/30">|</span>
+                                <span class="text-red-200">${max}°</span>
+                            </div>
+                            <p class="text-[11px] font-medium text-gray-300 mt-2 leading-tight">${wData.desc}</p>
                         </div>
                     </div>
                 `;
-                StudioEngine.start();
-            },
-            showPublishModal: () => {
-                Utils.showModal(`
-                    <div class="bg-gray-800 p-6 rounded-lg max-w-md w-full border border-gray-700">
-                        <h2 class="text-2xl font-bold mb-4 text-blue-400">Publikacja Gry</h2>
-                        
-                        <label class="block text-sm mb-1 text-gray-400">Nazwa Gry</label>
-                        <input type="text" id="pub-title" class="w-full bg-gray-900 border border-gray-600 rounded p-2 mb-4 text-white" placeholder="Super Gra">
-                        
-                        <label class="block text-sm mb-1 text-gray-400">Opis</label>
-                        <textarea id="pub-desc" class="w-full bg-gray-900 border border-gray-600 rounded p-2 mb-4 text-white" rows="3" placeholder="Opis twojej gry..."></textarea>
-                        
-                        <div class="flex justify-end gap-2 mt-4">
-                            <button onclick="Utils.closeModal()" class="bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded">Anuluj</button>
-                            <button onclick="StudioEngine.publish()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded font-bold">Publikuj</button>
-                        </div>
-                    </div>
-                `);
+                container.innerHTML += card;
             }
-        };
+            lucide.createIcons();
+        }
 
-        window.StudioEngine = {
-            isRunning: false,
-            scene: null, camera: null, renderer: null,
-            objects: [], selectedObject: null,
-            raycaster: new THREE.Raycaster(), mouse: new THREE.Vector2(),
-            mode: 'translate',
-            
-            start: () => {
-                StudioEngine.isRunning = true;
-                const canvas = document.getElementById('studio-canvas');
-                const container = document.getElementById('studio-container');
+        // --- MAPA EFEKT ZIEMI 3D & RADAR ---
+        async function initRadarMap() {
+            if (!mapInstance) {
+                // Tworzymy nową mapę zaczynając od dalekiego "kosmosu" (zoom=3, widać kule ziemską)
+                mapInstance = L.map('map', { zoomControl: false, attributionControl: false }).setView([lat, lon], 3);
+                L.control.zoom({ position: 'bottomright' }).addTo(mapInstance);
+
+                // Warstwy bazowe do przełączania!
+                const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                    maxZoom: 19, attribution: 'Ziemia 3D (Esri)'
+                });
                 
-                StudioEngine.scene = new THREE.Scene();
-                StudioEngine.scene.background = new THREE.Color(0x1e293b);
-                StudioEngine.scene.add(new THREE.GridHelper(100, 100, 0x475569, 0x334155));
-
-                StudioEngine.camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
-                StudioEngine.camera.position.set(10, 10, 10);
-                StudioEngine.camera.lookAt(0, 0, 0);
-
-                StudioEngine.renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-                StudioEngine.renderer.setSize(container.clientWidth, container.clientHeight);
-
-                const light = new THREE.DirectionalLight(0xffffff, 1);
-                light.position.set(5, 10, 5);
-                StudioEngine.scene.add(light);
-                StudioEngine.scene.add(new THREE.AmbientLight(0x404040));
-
-                canvas.addEventListener('pointerdown', StudioEngine.onPointerDown);
-                window.addEventListener('resize', () => {
-                    if(!StudioEngine.isRunning) return;
-                    StudioEngine.camera.aspect = container.clientWidth / container.clientHeight;
-                    StudioEngine.camera.updateProjectionMatrix();
-                    StudioEngine.renderer.setSize(container.clientWidth, container.clientHeight);
+                const darkMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                    maxZoom: 19, attribution: 'Mapa Ciemna'
                 });
 
-                StudioEngine.animate();
-            },
-            addPart: () => {
-                const color = document.getElementById('studio-color').value;
-                const geo = new THREE.BoxGeometry(2, 2, 2);
-                const mat = new THREE.MeshStandardMaterial({ color: color });
-                const mesh = new THREE.Mesh(geo, mat);
-                mesh.position.set(0, 1, 0);
-                StudioEngine.scene.add(mesh);
-                StudioEngine.objects.push(mesh);
-            },
-            onPointerDown: (e) => {
-                const rect = document.getElementById('studio-canvas').getBoundingClientRect();
-                StudioEngine.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-                StudioEngine.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-                
-                StudioEngine.raycaster.setFromCamera(StudioEngine.mouse, StudioEngine.camera);
-                const intersects = StudioEngine.raycaster.intersectObjects(StudioEngine.objects);
-                
-                if(StudioEngine.selectedObject) StudioEngine.selectedObject.material.emissive.setHex(0x000000);
-                
-                if(intersects.length > 0) {
-                    StudioEngine.selectedObject = intersects[0].object;
-                    StudioEngine.selectedObject.material.emissive.setHex(0x333333); 
-                    
-                    if(StudioEngine.mode === 'translate') StudioEngine.selectedObject.position.y += 1;
-                    if(StudioEngine.mode === 'scale') StudioEngine.selectedObject.scale.addScalar(0.5);
-                } else {
-                    StudioEngine.selectedObject = null;
-                }
-            },
-            deleteSelected: () => {
-                if(StudioEngine.selectedObject) {
-                    StudioEngine.scene.remove(StudioEngine.selectedObject);
-                    StudioEngine.objects = StudioEngine.objects.filter(o => o !== StudioEngine.selectedObject);
-                    StudioEngine.selectedObject = null;
-                }
-            },
-            setMode: (mode) => { StudioEngine.mode = mode; },
-            openScriptEditor: () => {
-                if(!StudioEngine.selectedObject) return Utils.showMessage('Błąd', 'Wybierz klocek, aby dodać skrypt!');
-                Utils.showMessage('Edytor Lua (Symulacja)', 'W pełnej wersji wpiszesz tu kod Lua. W tej wersji dodamy obracanie się obiektu.');
-                StudioEngine.selectedObject.userData.isSpinning = true;
-            },
-            publish: async () => {
-                const title = document.getElementById('pub-title').value || "Gra bez nazwy";
-                const desc = document.getElementById('pub-desc').value;
-                
-                const mapData = StudioEngine.objects.map(obj => ({
-                    x: obj.position.x, y: obj.position.y, z: obj.position.z,
-                    sx: obj.geometry.parameters.width * obj.scale.x,
-                    sy: obj.geometry.parameters.height * obj.scale.y,
-                    sz: obj.geometry.parameters.depth * obj.scale.z,
-                    color: obj.material.color.getHex()
-                }));
+                // Domyślnie satelita "GPS 3D World"
+                esriSatellite.addTo(mapInstance);
 
-                const gameData = {
-                    title, description: desc,
-                    creatorId: AppState.user.id,
-                    mapData: JSON.stringify(mapData),
-                    playersCount: 0,
-                    publishedAt: Date.now()
+                // Kontrolka do zmiany na widok w nocy/radarowy
+                const baseMaps = {
+                    "Ziemia 3D (Satelita)": esriSatellite,
+                    "Zwykła (Ciemna)": darkMap
                 };
+                L.control.layers(baseMaps).addTo(mapInstance);
 
-                LocalDB.add('games', gameData);
+                const customIcon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div style="background-color: #38bdf8; width: 18px; height: 18px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(56, 189, 248, 1);"></div>`,
+                    iconSize: [18, 18],
+                    iconAnchor: [9, 9]
+                });
+                mapMarker = L.marker([lat, lon], {icon: customIcon}).addTo(mapInstance);
+
+                // Pobieranie chmur/deszczu
+                try {
+                    const rvResponse = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+                    const rvData = await rvResponse.json();
+                    const radarPast = rvData.radar.past;
+                    const latestFrame = radarPast[radarPast.length - 1];
+                    const radarUrl = `${rvData.host}${latestFrame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+                    
+                    L.tileLayer(radarUrl, { opacity: 0.65, zIndex: 100 }).addTo(mapInstance);
+                } catch (error) { console.error("Radar error:", error); }
                 
-                const badges = AppState.user.badges || [];
-                if(!badges.includes('creator')) {
-                    badges.push('creator');
-                    LocalDB.update('users', AppState.user.id, { badges });
-                    AppState.user.badges = badges;
-                }
+                // --- NOWA FUNKCJA: SKANOWANIE POGODY Z KLIKNIĘCIA W MAPĘ ---
+                mapInstance.on('click', async function(e) {
+                    lat = e.latlng.lat;
+                    lon = e.latlng.lng;
+                    
+                    // Przesuń znacznik w kliknięte miejsce
+                    mapMarker.setLatLng([lat, lon]);
+                    
+                    // Płynny lot kamery do klikniętego miejsca
+                    mapInstance.flyTo([lat, lon], mapInstance.getZoom(), {
+                        animate: true,
+                        duration: 1.0
+                    });
 
-                Utils.closeModal();
-                Utils.showMessage('Opublikowano!', 'Twoja gra została zapisana w bazie lokalnej.');
-                window.location.hash = '#home';
-            },
-            stop: () => {
-                StudioEngine.isRunning = false;
-                cancelAnimationFrame(StudioEngine.animationId);
-            },
-            animate: () => {
-                if(!StudioEngine.isRunning) return;
-                StudioEngine.animationId = requestAnimationFrame(StudioEngine.animate);
-                
-                StudioEngine.camera.position.x = Math.sin(Date.now() * 0.0005) * 15;
-                StudioEngine.camera.position.z = Math.cos(Date.now() * 0.0005) * 15;
-                StudioEngine.camera.lookAt(0,0,0);
+                    // Aktualizacja UI na czas ładowania (Skanowanie)
+                    document.getElementById('location-text').textContent = "Skanowanie radaru...";
+                    document.getElementById('gps-status').textContent = "(Cel z mapy)";
+                    document.getElementById('current-desc').textContent = "Analiza chmur...";
+                    document.getElementById('current-icon-container').innerHTML = `<i data-lucide="loader" class="w-16 h-16 animate-spin text-blue-400"></i>`;
+                    lucide.createIcons();
 
-                StudioEngine.objects.forEach(obj => {
-                    if(obj.userData.isSpinning) {
-                        obj.rotation.y += 0.05;
+                    // Reverse Geocoding - próba odgadnięcia miasta/państwa na podstawie kliknięcia
+                    try {
+                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`);
+                        const data = await res.json();
+                        
+                        if(data && (data.name || data.address)) {
+                            // Wyciąga miasto, wioskę, region lub ostatecznie nazwę państwa (np. jeśli klikniesz w szczere pole)
+                            cityName = data.name || data.address.city || data.address.town || data.address.village || data.address.country || "Otwarty teren";
+                        } else {
+                            // Jeśli klikniesz na środek oceanu
+                            cityName = `Ocean / Morze`;
+                        }
+                    } catch (err) {
+                        cityName = `Współrzędne: ${lat.toFixed(2)}, ${lon.toFixed(2)}`;
                     }
+
+                    // Po pobraniu nowej lokalizacji z kliknięcia, odpytaj stację pogodową!
+                    fetchWeatherData();
                 });
 
-                StudioEngine.renderer.render(StudioEngine.scene, StudioEngine.camera);
+                // --- EFEKT ZOOM Z KOSMOSU DO ZIEMI ---
+                setTimeout(() => {
+                    // Kamera "Leci" w dół dosłownie na poziom ulicy
+                    mapInstance.flyTo([lat, lon], 12, {
+                        animate: true,
+                        duration: 3.5 // Płynny lot trwający 3.5 sekundy
+                    });
+                }, 1000);
+
+            } else {
+                // Jeśli użytkownik użył wyszukiwarki - leć płynnie do nowego miasta
+                mapMarker.setLatLng([lat, lon]);
+                mapInstance.flyTo([lat, lon], 12, {
+                    animate: true,
+                    duration: 3.5
+                });
             }
-        };
+            
+            setTimeout(() => mapInstance.invalidateSize(), 500);
+        }
 
-        // Initialize
-        authenticateUser();
-
+        document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>
+<!-- ... existing code ... -->
