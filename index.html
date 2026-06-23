@@ -258,68 +258,6 @@
                 <div class="text-gray-300 w-full text-center py-4 font-medium animate-pulse">Ładowanie danych z serwera...</div>
             </div>
         </div>
-
-        <div class="glass-panel p-8 relative overflow-hidden border-t-2 border-blue-500/30">
-            <h2 class="text-xl font-bold mb-6 flex items-center gap-2 drop-shadow-md text-gray-100">
-                <i data-lucide="map" class="text-blue-400 w-6 h-6"></i>
-                Legenda zjawisk na radarze satelitarnym (Co oznaczają kolory?)
-            </h2>
-            
-            <div class="flex flex-col md:flex-row w-full rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
-                
-                <!-- Słabe -->
-                <div class="flex-1 bg-black/40 flex flex-col transition-colors hover:bg-black/60">
-                    <div class="h-5 w-full" style="background: linear-gradient(to right, #00e5ff, #0088ff);"></div>
-                    <div class="p-4 text-center border-b border-white/5 md:border-b-0 md:border-r">
-                        <p class="text-xs font-black text-blue-400 uppercase tracking-widest mb-1">Niskie</p>
-                        <p class="text-xs text-gray-300 font-medium">Mżawka / Słaby deszcz</p>
-                        <p class="text-[10px] text-gray-500 mt-1">Bez zagrożenia</p>
-                    </div>
-                </div>
-
-                <!-- Umiarkowane -->
-                <div class="flex-1 bg-black/40 flex flex-col transition-colors hover:bg-black/60">
-                    <div class="h-5 w-full" style="background: linear-gradient(to right, #99ff00, #ffff00);"></div>
-                    <div class="p-4 text-center border-b border-white/5 md:border-b-0 md:border-r">
-                        <p class="text-xs font-black text-yellow-400 uppercase tracking-widest mb-1">Średnie</p>
-                        <p class="text-xs text-gray-300 font-medium">Umiarkowany deszcz</p>
-                        <p class="text-[10px] text-gray-500 mt-1">Zwykłe opady</p>
-                    </div>
-                </div>
-
-                <!-- Silne -->
-                <div class="flex-1 bg-black/40 flex flex-col transition-colors hover:bg-black/60">
-                    <div class="h-5 w-full" style="background: linear-gradient(to right, #ffcc00, #ff6600);"></div>
-                    <div class="p-4 text-center border-b border-white/5 md:border-b-0 md:border-r">
-                        <p class="text-xs font-black text-orange-400 uppercase tracking-widest mb-1">Silne</p>
-                        <p class="text-xs text-gray-300 font-medium">Ulewa / Duży deszcz</p>
-                        <p class="text-[10px] text-gray-500 mt-1">Pogorszenie widoczności</p>
-                    </div>
-                </div>
-
-                <!-- Bardzo silne (Burze) -->
-                <div class="flex-1 bg-black/40 flex flex-col transition-colors hover:bg-black/60">
-                    <div class="h-5 w-full" style="background: linear-gradient(to right, #ff3300, #990000);"></div>
-                    <div class="p-4 text-center border-b border-white/5 md:border-b-0 md:border-r">
-                        <p class="text-xs font-black text-red-500 uppercase tracking-widest mb-1">Zagrożenie</p>
-                        <p class="text-xs text-gray-300 font-medium">Burze / Nawałnice</p>
-                        <p class="text-[10px] text-gray-500 mt-1">Silny wiatr, wyładowania</p>
-                    </div>
-                </div>
-
-                <!-- Ekstremalne (Fioletowy rdzeń ze zdjęcia) -->
-                <div class="flex-1 bg-black/40 flex flex-col transition-colors hover:bg-black/60 relative overflow-hidden">
-                    <div class="absolute inset-0 bg-fuchsia-500/10 animate-pulse pointer-events-none"></div>
-                    <div class="h-5 w-full" style="background: linear-gradient(to right, #ff00ff, #e6e6fa, #ffffff);"></div>
-                    <div class="p-4 text-center relative z-10">
-                        <p class="text-xs font-black text-fuchsia-400 uppercase tracking-widest mb-1 drop-shadow-[0_0_8px_rgba(232,121,249,0.8)]">Ekstremalne</p>
-                        <p class="text-xs text-white font-bold">Grad / Superkomórka</p>
-                        <p class="text-[10px] text-fuchsia-200 mt-1">Ryzyko TORNADA / Zniszczeń</p>
-                    </div>
-                </div>
-
-            </div>
-        </div>
     </div>
 
     <!-- Leaflet JS -->
@@ -688,12 +626,13 @@ ZALECANY WEKTOR EWAKUACJI: ${evacDir}`;
                     if(data.hourly.wind_speed_10m[i] > maxWind) {
                         maxWind = data.hourly.wind_speed_10m[i];
                         peakHour = data.hourly.time[i].split("T")[1];
-                        if (i >= 3) tempDrop = data.hourly.temperature_2m[i-3] - data.hourly.temperature_2m[i];
+                        if (i >= 3) tempDrop = Math.abs(data.hourly.temperature_2m[i-3] - data.hourly.temperature_2m[i]);
                     }
                 }
             }
 
-            if(maxWind >= 95 || tempDrop > 5) {
+            // POPRAWIONA FIZYKA: Prawdziwe warunki do Tornada (Wiatr > 100 km/h)
+            if(maxWind >= 100 || (maxWind >= 95 && tempDrop >= 8)) {
                 container.innerHTML = `
                     <div class="flex flex-col md:flex-row gap-6 items-start">
                         <div class="bg-red-500/20 p-5 rounded-full border border-red-500/50 animate-pulse">
@@ -703,7 +642,7 @@ ZALECANY WEKTOR EWAKUACJI: ${evacDir}`;
                             <h3 class="text-2xl font-black text-red-400 uppercase mb-3">EKSTREMALNE ZAGROŻENIE JUTRO: Ryzyko Tornada!</h3>
                             <div class="bg-black/30 p-4 rounded-lg mb-3">
                                 <p class="text-white text-lg"><span class="font-bold text-gray-400 uppercase text-sm">Godzina uderzenia:</span> <span class="text-red-300 font-bold ml-2 text-xl">${peakHour}</span></p>
-                                <p class="text-white text-lg mt-2"><span class="font-bold text-gray-400 uppercase text-sm block mb-1">Algorytm ustalił:</span> Gwałtowne zderzenie mas. Obliczono szok termiczny rzędu ${Math.max(tempDrop, 4).toFixed(1)}°C w bardzo krótkim czasie. Przewidywane porywy wiatru: ${maxWind} km/h.</p>
+                                <p class="text-white text-lg mt-2"><span class="font-bold text-gray-400 uppercase text-sm block mb-1">Algorytm ustalił:</span> Gwałtowne zderzenie mas. Obliczono szok termiczny rzędu ${Math.max(tempDrop, 4).toFixed(1)}°C w bardzo krótkim czasie. Przewidywane niszczycielskie porywy wiatru: ${maxWind} km/h.</p>
                             </div>
                             <div class="bg-red-900/60 border-l-8 border-red-500 p-5 rounded-r-lg">
                                 <p class="text-red-100 font-black tracking-widest uppercase text-xl mb-2 flex items-center gap-2"><i data-lucide="alert-triangle"></i> WAŻNE!</p>
@@ -711,13 +650,24 @@ ZALECANY WEKTOR EWAKUACJI: ${evacDir}`;
                             </div>
                         </div>
                     </div>`;
+            } else if (maxWind >= 65) {
+                // POŚREDNI POZIOM ZAGROŻENIA: Silna Wichura
+                container.innerHTML = `
+                    <div class="flex items-center gap-5">
+                        <div class="bg-yellow-500/20 p-4 rounded-full border border-yellow-500/50"><i data-lucide="wind" class="w-10 h-10 text-yellow-400"></i></div>
+                        <div>
+                            <h3 class="text-xl font-bold text-yellow-400">Ostrzeżenie: Silna Wichura</h3>
+                            <p class="text-gray-300 mt-1">Zderzenia mas powietrza wynoszą ${tempDrop.toFixed(1)}°C. Wiatr osiągnie aż ${maxWind} km/h o godzinie ${peakHour}. Zabezpiecz luźne przedmioty!</p>
+                        </div>
+                    </div>`;
             } else {
+                // BRAK ZAGROŻENIA
                 container.innerHTML = `
                     <div class="flex items-center gap-5">
                         <div class="bg-emerald-500/20 p-4 rounded-full border border-emerald-500/50"><i data-lucide="shield-check" class="w-10 h-10 text-emerald-400"></i></div>
                         <div>
                             <h3 class="text-xl font-bold text-emerald-400">Jutro brak ryzyka powstawania superkomórek</h3>
-                            <p class="text-gray-300 mt-1">Zderzenia frontów termicznych wynoszą zaledwie ${Math.abs(tempDrop).toFixed(1)}°C. Wiatr maksymalnie ${maxWind} km/h o ${peakHour}.</p>
+                            <p class="text-gray-300 mt-1">Stabilna atmosfera. Wiatr maksymalnie ${maxWind} km/h o godzinie ${peakHour}. Brak niszczycielskich zderzeń frontów.</p>
                         </div>
                     </div>`;
             }
@@ -799,7 +749,9 @@ ZALECANY WEKTOR EWAKUACJI: ${evacDir}`;
                 mapInstance.on('click', async function(e) {
                     lat = e.latlng.lat; lon = e.latlng.lng;
                     mapMarker.setLatLng([lat, lon]);
-                    mapInstance.flyTo([lat, lon], mapInstance.getZoom(), { animate: true, duration: 1.0 });
+                    
+                    // Naprawiony błąd: łagodne przesunięcie (panTo) zamiast resetującego zoom flyTo()
+                    mapInstance.panTo([lat, lon]);
                     
                     try {
                         const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`);
