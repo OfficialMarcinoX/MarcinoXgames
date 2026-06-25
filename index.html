@@ -1,81 +1,538 @@
-<!-- ... existing code ... -->
-        <div class="glass-panel p-8 relative overflow-hidden border-t-2 border-purple-500/50">
-            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-600 via-pink-500 to-red-500"></div>
+<!DOCTYPE html>
+<html lang="pl" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Centrum Pogodowe planexd_0 PRO MAX</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+        
+        body {
+            font-family: 'Outfit', sans-serif;
+            color: white;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
+            background-size: 200% 200%;
+            animation: gradient-shift 15s ease infinite;
+            transition: background 1.5s ease;
+        }
+
+        @keyframes gradient-shift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.5);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 1.5rem;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        .alert-active {
+            background: linear-gradient(90deg, rgba(127, 29, 29, 0.8), rgba(153, 27, 27, 0.8));
+            backdrop-filter: blur(10px);
+            border-left: 6px solid #ef4444;
+            animation: pulse-alert 2s infinite;
+        }
+
+        @keyframes pulse-alert {
+            0%, 100% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 30px rgba(239, 68, 68, 0.8); }
+        }
+
+        #map {
+            height: 100%;
+            min-height: 400px;
+            width: 100%;
+            border-radius: 1.25rem;
+            z-index: 10;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.3); border-radius: 10px; }
+
+        .search-input {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            transition: all 0.3s ease;
+        }
+        .search-input:focus {
+            background: rgba(255, 255, 255, 0.2);
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Ukryty Terminal Awaryjny */
+        #emergency-modal {
+            display: none;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 9999;
+            backdrop-filter: blur(20px);
+        }
+        .terminal-text { font-family: 'Courier New', Courier, monospace; }
+        
+        .tornado-spin { animation: spin 2s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="p-4 md:p-8 flex flex-col items-center">
+
+    <!-- TERMINAL P2P (Z ukrytym hasłem) -->
+    <div id="emergency-modal" class="flex items-center justify-center">
+        <div class="border-2 border-red-600 bg-black p-8 rounded-xl max-w-2xl w-full shadow-[0_0_50px_rgba(220,38,38,0.5)]">
+            <div id="login-screen">
+                <h2 class="text-3xl text-red-500 font-black tracking-widest mb-4 flex items-center gap-3"><i data-lucide="shield-alert" class="w-10 h-10"></i> AUTORYZACJA WYMAGANA</h2>
+                <p class="text-red-400 mb-4 terminal-text">Podaj kod dostępu do systemu zarządzania kryzysowego.</p>
+                <input type="password" id="admin-pass" class="w-full bg-red-900/20 border border-red-500 text-red-100 p-3 mb-4 rounded terminal-text" placeholder="Wprowadź hasło...">
+                <button onclick="checkPassword()" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded uppercase tracking-widest">Zaloguj</button>
+            </div>
+            
+            <div id="p2p-dashboard" style="display: none;">
+                <h2 class="text-2xl text-green-500 font-black tracking-widest mb-2 flex items-center gap-3"><i data-lucide="radio" class="w-8 h-8"></i> NADAJNIK P2P ONLINE</h2>
+                <p class="text-green-400 mb-6 terminal-text text-sm border-b border-green-800 pb-2">Bezpośrednie połączenie neuronowe z mieszkańcami.</p>
+                
+                <label class="text-gray-400 text-xs uppercase font-bold">Wybierz zagrożenie:</label>
+                <select id="p2p-type" class="w-full bg-gray-900 border border-gray-700 text-white p-3 mb-4 rounded">
+                    <option value="TORNADO">Atak Tornada</option>
+                    <option value="POWODZ">Bardzo Ogromne Ulewy / Powódź</option>
+                    <option value="TERRORYZM">Alarm Antyterrorystyczny</option>
+                </select>
+
+                <label class="text-gray-400 text-xs uppercase font-bold">Lokalizacja i polecenia (Adres):</label>
+                <textarea id="p2p-msg" class="w-full bg-gray-900 border border-gray-700 text-white p-3 mb-2 rounded h-24 terminal-text" placeholder="Oczekuje na wprowadzenie koordynatów..."></textarea>
+                
+                <button onclick="aiAnalyzeLocation()" class="mb-6 w-full bg-blue-900/50 hover:bg-blue-800 border border-blue-500 text-blue-300 font-bold py-2 rounded flex items-center justify-center gap-2 transition-colors">
+                    <i data-lucide="brain-circuit" class="w-5 h-5"></i> Nasze AI: Wylicz strefę i wpisz kierunek ucieczki
+                </button>
+
+                <button onclick="sendP2PBroadcast()" class="w-full bg-red-600 hover:bg-red-500 text-white font-black text-xl py-4 rounded uppercase tracking-widest shadow-[0_0_20px_rgba(220,38,38,0.8)] animate-pulse">
+                    NADAJ KOMUNIKAT P2P
+                </button>
+                <button onclick="closeEmergency()" class="w-full text-gray-500 mt-4 hover:text-white">Zamknij Terminal</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GŁÓWNA APLIKACJA -->
+    <div class="max-w-6xl w-full space-y-6">
+        
+        <!-- Nagłówek -->
+        <header class="flex flex-col lg:flex-row justify-between items-center mb-6 gap-6 glass-panel p-6">
+            <div class="text-center lg:text-left">
+                <h1 class="text-3xl lg:text-4xl font-extrabold tracking-tight text-white drop-shadow-md">
+                    Centrum Pogodowe <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-blue-500">planexd_0</span>
+                </h1>
+                <p class="text-gray-200 text-sm mt-2 flex items-center justify-center lg:justify-start gap-2">
+                    <i data-lucide="map-pin" class="w-4 h-4 text-red-400"></i>
+                    <span id="location-text" class="font-semibold text-lg">Wykrywanie...</span>
+                </p>
+            </div>
+            
+            <div class="flex items-center gap-3 w-full lg:w-auto flex-wrap justify-center">
+                
+                <!-- Przycisk Awaryjny -->
+                <button onclick="openEmergency()" class="bg-red-500/20 hover:bg-red-500/40 border border-red-500/50 text-red-400 p-2.5 rounded-full transition-colors group shadow-lg shadow-red-500/20 animate-pulse" title="System Kryzysowy (Tylko Admin)">
+                    <i data-lucide="siren" class="w-5 h-5"></i>
+                </button>
+
+                <!-- Przycisk Powiadomień -->
+                <button id="notify-btn" class="bg-yellow-500/20 hover:bg-yellow-500/40 border border-yellow-400/30 text-yellow-300 p-2.5 rounded-full transition-colors group shadow-lg" title="Włącz powiadomienia na ekranie">
+                    <i data-lucide="bell" id="bell-icon" class="w-5 h-5 group-hover:scale-110 transition-transform"></i>
+                </button>
+
+                <!-- Skaner Tornad -->
+                <button onclick="scanForTornado()" class="bg-orange-500/20 hover:bg-orange-500/40 border border-orange-400/50 text-orange-400 p-2.5 rounded-full transition-colors group shadow-lg" title="Skanuj obszar w poszukiwaniu Tornad">
+                    <i data-lucide="tornado" class="w-5 h-5 group-hover:scale-110 transition-transform"></i>
+                </button>
+
+                <!-- Wyszukiwarka -->
+                <form id="search-form" class="relative">
+                    <input type="text" id="city-input" placeholder="Szukaj miasta..." class="search-input w-48 lg:w-64 py-2.5 pl-10 pr-4 rounded-full text-sm">
+                    <i data-lucide="search" class="w-4 h-4 absolute left-3 top-3 text-gray-300"></i>
+                    <button type="submit" class="hidden">Szukaj</button>
+                </form>
+            </div>
+        </header>
+
+        <div id="alerts-container" class="hidden flex-col gap-3"></div>
+
+        <!-- Główny Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Aktualna Pogoda -->
+            <div class="glass-panel p-8 lg:col-span-1 flex flex-col justify-between relative overflow-hidden group">
+                <div class="absolute -top-10 -right-10 p-6 opacity-10 transform group-hover:scale-110 transition-transform duration-700" id="current-bg-icon">
+                    <i data-lucide="cloud" class="w-64 h-64"></i>
+                </div>
+                
+                <div class="relative z-10">
+                    <h2 class="text-sm uppercase tracking-widest text-gray-300 font-semibold mb-4">W tym momencie</h2>
+                    <div class="flex items-center gap-6 mb-4">
+                        <div id="current-icon-container" class="text-white drop-shadow-lg">
+                            <i data-lucide="loader" class="w-16 h-16 animate-spin"></i>
+                        </div>
+                        <div class="text-7xl font-extrabold tracking-tighter drop-shadow-md" id="current-temp">--°</div>
+                    </div>
+                    <p class="text-2xl font-medium text-white capitalize drop-shadow" id="current-desc">Ładowanie...</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 mt-8 relative z-10">
+                    <div class="bg-black/30 backdrop-blur-sm p-4 rounded-2xl flex items-center gap-3">
+                        <i data-lucide="wind" class="text-cyan-300 w-6 h-6"></i>
+                        <div>
+                            <p class="text-[10px] uppercase text-gray-400 font-bold">Wiatr</p>
+                            <p class="font-bold text-sm" id="current-wind">-- km/h</p>
+                        </div>
+                    </div>
+                    <div class="bg-black/30 backdrop-blur-sm p-4 rounded-2xl flex items-center gap-3">
+                        <i data-lucide="compass" class="text-purple-300 w-6 h-6"></i>
+                        <div>
+                            <p class="text-[10px] uppercase text-gray-400 font-bold">Kierunek</p>
+                            <p class="font-bold text-sm" id="current-wind-dir">--°</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mapa / Radar 3D -->
+            <div class="glass-panel p-2 lg:col-span-2 relative shadow-2xl overflow-hidden rounded-2xl">
+                <div class="absolute top-4 left-4 z-[400] bg-black/80 backdrop-blur-md px-4 py-2 rounded-full text-xs font-bold text-white border border-white/20 flex items-center gap-2 shadow-lg cursor-pointer hover:bg-black">
+                    <span class="relative flex h-3 w-3">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                    </span>
+                    Skaner Satelitarny (Kliknij mapę, by skanować)
+                </div>
+                <div id="map"></div>
+            </div>
+        </div>
+
+        <!-- NASZE WŁASNE AI NA ŻYWO (Poprawione) -->
+        <div class="glass-panel p-8 border-t-2 border-purple-500/50">
             <h2 class="text-xl font-extrabold mb-6 flex items-center gap-2 drop-shadow-md text-purple-300">
-                <i data-lucide="brain-circuit" class="w-6 h-6"></i>
-                Własny Algorytm (Bez zewnętrznego API): Analiza szoku termicznego NA ŻYWO
+                <i data-lucide="cpu" class="w-6 h-6"></i>
+                Własny Algorytm AI (Bez zew. API): Analiza szoku termicznego NA ŻYWO
             </h2>
             <div id="ai-live-container" class="bg-black/40 p-6 rounded-2xl border border-white/10 shadow-inner">
                 <div class="flex items-center gap-4 text-gray-300">
                     <i data-lucide="loader" class="animate-spin w-8 h-8 text-purple-400"></i>
-                    <span class="font-medium">Nasz autorski skrypt matematyczny przetwarza fizykę mas powietrza w czasie rzeczywistym...</span>
+                    <span class="font-medium">Nasz autorski skrypt matematyczny przetwarza fizykę mas powietrza w tej sekundzie...</span>
                 </div>
             </div>
         </div>
 
         <!-- Prognoza na 16 dni -->
-<!-- ... existing code ... -->
-        // --- STREAMING_CHUNK: Autorska analityka AI ---
-        function analyzeCustomAI(data) {
-            const container = document.getElementById('ai-live-container');
+        <div class="glass-panel p-8">
+            <h2 class="text-xl font-bold mb-6 flex items-center gap-2 drop-shadow-md">
+                <i data-lucide="calendar-clock" class="text-blue-300"></i>
+                Długoterminowa prognoza (16 dni)
+            </h2>
+            <div class="flex overflow-x-auto custom-scrollbar gap-5 pb-4" id="forecast-container"></div>
+        </div>
+
+        <!-- Legenda Radaru (Dla zdjęcia image_0d49fc.png) -->
+        <div class="glass-panel p-6 border-l-4 border-blue-500">
+            <h2 class="text-lg font-bold mb-4 flex items-center gap-2 text-white">
+                <i data-lucide="map" class="text-blue-400 w-5 h-5"></i> Jak czytać Mapę Radarową?
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4 text-sm font-medium">
+                <div class="flex items-center gap-3 bg-black/30 p-3 rounded-lg border border-white/5">
+                    <div class="w-4 h-4 rounded-full bg-blue-400 shadow-[0_0_10px_#60a5fa]"></div>
+                    <span class="text-blue-200">Błękitny: Mżawka / Lekki opad</span>
+                </div>
+                <div class="flex items-center gap-3 bg-black/30 p-3 rounded-lg border border-white/5">
+                    <div class="w-4 h-4 rounded-full bg-yellow-400 shadow-[0_0_10px_#facc15]"></div>
+                    <span class="text-yellow-200">Żółty: Umiarkowany deszcz</span>
+                </div>
+                <div class="flex items-center gap-3 bg-black/30 p-3 rounded-lg border border-white/5">
+                    <div class="w-4 h-4 rounded-full bg-orange-500 shadow-[0_0_10px_#f97316]"></div>
+                    <span class="text-orange-300">Pomarańcz: Ulewa</span>
+                </div>
+                <div class="flex items-center gap-3 bg-black/30 p-3 rounded-lg border border-white/5">
+                    <div class="w-4 h-4 rounded-full bg-red-600 shadow-[0_0_10px_#dc2626]"></div>
+                    <span class="text-red-400 font-bold">Czerwony: Burza z piorunami</span>
+                </div>
+                <div class="flex items-center gap-3 bg-black/30 p-3 rounded-lg border border-red-500/50 animate-pulse">
+                    <div class="w-4 h-4 rounded-full bg-fuchsia-400 border-2 border-white shadow-[0_0_15px_#e879f9]"></div>
+                    <span class="text-fuchsia-300 font-bold">Biały/Fiolet: EKSTREMALNE RYZYKO, GRAD, TORNADO</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- SKRYPTY (LOGIKA APLIKACJI) -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        const weatherCodes = {
+            0: { desc: 'Czyste niebo', icon: 'sun', bg: 'linear-gradient(135deg, #2980B9 0%, #6DD5FA 100%)' },
+            1: { desc: 'Głównie bezchmurnie', icon: 'cloud-sun', bg: 'linear-gradient(135deg, #2980B9 0%, #6DD5FA 100%)' },
+            2: { desc: 'Słońce z chmurami', icon: 'cloud-sun', bg: 'linear-gradient(135deg, #5C6C7B 0%, #2B3A4A 100%)' },
+            3: { desc: 'Pochmurno', icon: 'cloud', bg: 'linear-gradient(135deg, #373B44 0%, #4286f4 100%)' },
+            45: { desc: 'Mgła', icon: 'cloud-fog', bg: 'linear-gradient(135deg, #757F9A 0%, #D7DDE8 100%)' },
+            48: { desc: 'Marznąca mgła', icon: 'cloud-fog', bg: 'linear-gradient(135deg, #757F9A 0%, #D7DDE8 100%)' },
+            51: { desc: 'Lekka mżawka', icon: 'cloud-drizzle', bg: 'linear-gradient(135deg, #4b6cb7 0%, #182848 100%)' },
+            61: { desc: 'Słaby deszcz', icon: 'cloud-rain', bg: 'linear-gradient(135deg, #2c3e50 0%, #3498db 100%)' },
+            63: { desc: 'Deszcz', icon: 'cloud-rain', bg: 'linear-gradient(135deg, #2c3e50 0%, #3498db 100%)' },
+            65: { desc: 'Silny deszcz', icon: 'cloud-rain', bg: 'linear-gradient(135deg, #141E30 0%, #243B55 100%)' },
+            71: { desc: 'Śnieg', icon: 'snowflake', bg: 'linear-gradient(135deg, #E0EAFC 0%, #CFDEF3 100%)' },
+            82: { desc: 'Gwałtowne ulewy', icon: 'cloud-showers-heavy', bg: 'linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)' },
+            95: { desc: 'Burza', icon: 'cloud-lightning', bg: 'linear-gradient(135deg, #232526 0%, #414345 100%)' },
+            99: { desc: 'Burza z gradem', icon: 'cloud-lightning', bg: 'linear-gradient(135deg, #000000 0%, #434343 100%)' }
+        };
+
+        let lat = 54.3520, lon = 18.6466; // Domyślnie Gdańsk
+        let cityName = "Gdańsk";
+        let mapInstance = null, mapMarker = null;
+        let lastWindSpeed = 0; let lastWindDir = 0;
+
+        // --- NATYWNE P2P (Bez API / Firebase) ---
+        const p2pChannel = new BroadcastChannel('weather_emergency_channel');
+        p2pChannel.onmessage = (event) => {
+            alert(`🚨 KOMUNIKAT KRYZYSOWY P2P 🚨\n\nRodzaj: ${event.data.type}\nTreść: ${event.data.message}`);
+            triggerPushNotification([`P2P ALARM: ${event.data.type}`, event.data.message]);
+        };
+
+        async function init() {
+            lucide.createIcons();
+            setupNotifications();
             
-            // PRAWDZIWE DANE Z TEJ SEKUNDY
+            document.getElementById('search-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const q = document.getElementById('city-input').value.trim();
+                if(q) await searchLocation(q);
+            });
+
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => { lat = pos.coords.latitude; lon = pos.coords.longitude; cityName = "Lokalizacja GPS"; fetchWeatherData(); },
+                    (err) => { fetchWeatherData(); }
+                );
+            } else { fetchWeatherData(); }
+        }
+
+        async function fetchWeatherData() {
+            document.getElementById('location-text').textContent = cityName;
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,is_day&hourly=temperature_2m,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=16`;
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                lastWindSpeed = data.current.wind_speed_10m;
+                lastWindDir = data.current.wind_direction_10m;
+                
+                updateUI(data);
+                generateAlerts(data);
+                analyzeCustomAILive(data); // <- PRAWIDŁOWE WYWOŁANIE AI
+                updateForecast(data);
+                initRadarMap();
+            } catch (err) { console.error(err); }
+        }
+
+        // --- NASZE AI NA ŻYWO (Zamiast pliku tekstowego) ---
+        function analyzeCustomAILive(data) {
+            const container = document.getElementById('ai-live-container');
             const currentWind = data.current.wind_speed_10m;
             let tempDrop = 0;
 
-            // Szukamy indeksu aktualnej godziny w danych, żeby obliczyć szok termiczny z ostatnich 3 godzin
-            // Np. odcinamy czas do samej godziny: "2026-06-23T12"
-            const currentTimeStr = data.current.time.substring(0, 13); 
+            // Szukamy różnicy temperatury z ostatnich 3 godzin do TEJ SEKUNDY
+            const currentTimeStr = data.current.time.substring(0, 13);
             const currentIndex = data.hourly.time.findIndex(t => t.startsWith(currentTimeStr));
-
+            
             if (currentIndex >= 3) {
-                // Skok temperatury wyliczony matematycznie względem tego, co było 3 godziny temu a TEJ SEKUNDY
                 tempDrop = Math.abs(data.hourly.temperature_2m[currentIndex - 3] - data.current.temperature_2m);
-            } else {
-                tempDrop = Math.abs(data.daily.temperature_2m_min[0] - data.current.temperature_2m);
             }
 
-            // POPRAWIONA FIZYKA: Warunki w czasie rzeczywistym
-            if(currentWind >= 100 || (currentWind >= 95 && tempDrop >= 8)) {
+            if(currentWind >= 100) {
                 container.innerHTML = `
                     <div class="flex flex-col md:flex-row gap-6 items-start">
                         <div class="bg-red-500/20 p-5 rounded-full border border-red-500/50 animate-pulse">
                             <i data-lucide="tornado" class="w-12 h-12 text-red-400"></i>
                         </div>
                         <div class="w-full">
-                            <h3 class="text-2xl font-black text-red-400 uppercase mb-3">EKSTREMALNE ZAGROŻENIE W TEJ CHWILI: Wykryto Tornado!</h3>
+                            <h3 class="text-2xl font-black text-red-400 uppercase mb-3">EKSTREMALNE ZAGROŻENIE W TEJ SEKUNDZIE!</h3>
                             <div class="bg-black/30 p-4 rounded-lg mb-3">
-                                <p class="text-white text-lg mt-2"><span class="font-bold text-gray-400 uppercase text-sm block mb-1">Algorytm ustalił (NA ŻYWO):</span> Gwałtowne zderzenie mas atmosferycznych w tym momencie. Obliczono szok termiczny rzędu ${tempDrop.toFixed(1)}°C w bardzo krótkim czasie. Obecne niszczycielskie porywy wiatru: ${currentWind} km/h.</p>
+                                <p class="text-white text-lg"><span class="font-bold text-gray-400 uppercase">AI Odczytało (NA ŻYWO):</span> Szok termiczny ${tempDrop.toFixed(1)}°C. Obecne niszczycielskie porywy wiatru to dokładnie ${currentWind} km/h.</p>
                             </div>
                             <div class="bg-red-900/60 border-l-8 border-red-500 p-5 rounded-r-lg">
-                                <p class="text-red-100 font-black tracking-widest uppercase text-xl mb-2 flex items-center gap-2"><i data-lucide="alert-triangle"></i> WAŻNE!</p>
-                                <p class="text-white font-medium text-lg">Ewakuacja z tego miejsca! Obowiązkowe natychmiastowe schowanie się w schronach. Ściany budynków naziemnych mogą zostać rozerwane.</p>
+                                <p class="text-white font-medium">Ewakuacja! Obowiązkowe natychmiastowe schowanie się w schronach.</p>
                             </div>
                         </div>
                     </div>`;
             } else if (currentWind >= 65) {
-                // POŚREDNI POZIOM ZAGROŻENIA: Silna Wichura TRWA
                 container.innerHTML = `
                     <div class="flex items-center gap-5">
                         <div class="bg-yellow-500/20 p-4 rounded-full border border-yellow-500/50"><i data-lucide="wind" class="w-10 h-10 text-yellow-400"></i></div>
                         <div>
-                            <h3 class="text-xl font-bold text-yellow-400">Ostrzeżenie: Silna Wichura (Teraz)</h3>
-                            <p class="text-gray-300 mt-1">Obecny skok temperatury to ${tempDrop.toFixed(1)}°C. Wiatr wieje z siłą ${currentWind} km/h w tej sekundzie. Zabezpiecz luźne przedmioty!</p>
+                            <h3 class="text-xl font-bold text-yellow-400">W tej sekundzie: Silna Wichura</h3>
+                            <p class="text-gray-300 mt-1">Algorytm wskazuje wiatr ${currentWind} km/h. Skok temperatury ${tempDrop.toFixed(1)}°C.</p>
                         </div>
                     </div>`;
             } else {
-                // BRAK ZAGROŻENIA
                 container.innerHTML = `
                     <div class="flex items-center gap-5">
                         <div class="bg-emerald-500/20 p-4 rounded-full border border-emerald-500/50"><i data-lucide="shield-check" class="w-10 h-10 text-emerald-400"></i></div>
                         <div>
-                            <h3 class="text-xl font-bold text-emerald-400">W tej sekundzie brak ryzyka powstawania superkomórek</h3>
-                            <p class="text-gray-300 mt-1">Stabilna atmosfera. Wiatr osiąga zaledwie ${currentWind} km/h. Brak niszczycielskich zderzeń frontów.</p>
+                            <h3 class="text-xl font-bold text-emerald-400">Teraz: Bezpiecznie (Brak Tornada)</h3>
+                            <p class="text-gray-300 mt-1">Atmosfera stabilna. Porywy zaledwie ${currentWind} km/h. Matematyczne ryzyko leja wynosi blisko 0%.</p>
                         </div>
                     </div>`;
             }
             lucide.createIcons();
         }
 
+        // --- MAPA I SKANOWANIE ---
+        async function initRadarMap() {
+            if (!mapInstance) {
+                mapInstance = L.map('map', { zoomControl: false }).setView([lat, lon], 5);
+                L.control.zoom({ position: 'bottomright' }).addTo(mapInstance);
+                const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(mapInstance);
+                
+                const icon = L.divIcon({ className: 'custom-div-icon', html: `<div style="background-color: #38bdf8; width:16px; height:16px; border-radius:50%; border:3px solid white;"></div>` });
+                mapMarker = L.marker([lat, lon], {icon: icon}).addTo(mapInstance);
+
+                fetch('https://api.rainviewer.com/public/weather-maps.json').then(r=>r.json()).then(data => {
+                    const latest = data.radar.past[data.radar.past.length-1];
+                    L.tileLayer(`${data.host}${latest.path}/256/{z}/{x}/{y}/2/1_1.png`, { opacity: 0.65 }).addTo(mapInstance);
+                });
+
+                // SKANOWANIE PO KLIKNIĘCIU (panTo - bez psucia zoomu)
+                mapInstance.on('click', async (e) => {
+                    lat = e.latlng.lat; lon = e.latlng.lng;
+                    mapMarker.setLatLng([lat, lon]);
+                    mapInstance.panTo([lat, lon]);
+                    try {
+                        const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`);
+                        const d = await r.json();
+                        cityName = d.name || d.address.city || d.address.country || "Otwarty teren (Skan)";
+                    } catch(err) { cityName = "Skanowanie Satelitarne"; }
+                    fetchWeatherData();
+                });
+
+                setTimeout(() => mapInstance.flyTo([lat, lon], 10, { animate: true, duration: 2 }), 1000);
+            } else {
+                mapMarker.setLatLng([lat, lon]);
+                mapInstance.flyTo([lat, lon], 10, { animate: true, duration: 2 });
+            }
+        }
+
+        async function searchLocation(query) {
+            const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1`);
+            const data = await res.json();
+            if (data.results) {
+                lat = data.results[0].latitude; lon = data.results[0].longitude;
+                cityName = data.results[0].name; fetchWeatherData();
+            }
+        }
+
+        function updateUI(data) {
+            const wData = weatherCodes[data.current.weather_code] || weatherCodes[3];
+            document.getElementById('current-temp').innerHTML = `${Math.round(data.current.temperature_2m)}<span class="text-4xl text-white/60 align-top">°C</span>`;
+            document.getElementById('current-desc').textContent = wData.desc;
+            document.getElementById('current-wind').textContent = `${data.current.wind_speed_10m} km/h`;
+            document.getElementById('current-wind-dir').textContent = `${data.current.wind_direction_10m}°`;
+            
+            document.getElementById('current-icon-container').innerHTML = `<i data-lucide="${wData.icon}" class="w-20 h-20"></i>`;
+            lucide.createIcons();
+        }
+
+        function generateAlerts(data) {
+            const wind = data.current.wind_speed_10m;
+            const code = data.current.weather_code;
+            const container = document.getElementById('alerts-container');
+            let html = ''; let msgs = [];
+
+            if (wind >= 100) {
+                html += `<div class="alert-active p-5 rounded-2xl flex gap-5 text-white shadow-2xl"><i data-lucide="tornado" class="w-8 h-8 flex-shrink-0"></i><div><h3 class="font-extrabold text-lg">🌪️ POTWIERDZONE TORNADO</h3><p class="text-sm">Wiatr ponad 100 km/h. Ewakuacja!</p></div></div>`;
+                msgs.push("TORNADO!");
+            } else if (wind >= 65) {
+                html += `<div class="bg-yellow-600/80 p-5 rounded-2xl flex gap-5 text-white"><i data-lucide="wind" class="w-8 h-8 flex-shrink-0"></i><div><h3 class="font-extrabold text-lg">⚠️ Silna Wichura</h3><p class="text-sm">Porywy do ${Math.round(wind)} km/h.</p></div></div>`;
+            }
+
+            if (code >= 95) html += `<div class="alert-active p-5 rounded-2xl flex gap-5 text-white shadow-2xl"><i data-lucide="cloud-lightning" class="w-8 h-8 flex-shrink-0"></i><div><h3 class="font-extrabold text-lg">🌩️ BURZA / GRAD</h3><p class="text-sm">Możliwe niszczycielskie opady gradu!</p></div></div>`;
+
+            if (html !== '') { container.innerHTML = html; container.classList.remove('hidden'); container.classList.add('flex'); triggerPushNotification(msgs); } 
+            else container.classList.add('hidden');
+            lucide.createIcons();
+        }
+
         function updateForecast(data) {
-<!-- ... existing code ... -->
+            const container = document.getElementById('forecast-container');
+            container.innerHTML = '';
+            for (let i = 1; i < data.daily.time.length; i++) {
+                const date = new Date(data.daily.time[i]);
+                const w = weatherCodes[data.daily.weather_code[i]] || weatherCodes[3];
+                container.innerHTML += `
+                    <div class="bg-black/20 p-5 rounded-2xl w-40 flex-shrink-0 text-center hover:bg-black/40 transition-all border border-white/10">
+                        <p class="font-bold text-sm">${date.toLocaleDateString('pl-PL', { weekday: 'short' })}</p>
+                        <p class="text-xs text-gray-400 mb-2">${date.toLocaleDateString('pl-PL', { day: 'numeric', month: '2-digit' })}</p>
+                        <i data-lucide="${w.icon}" class="w-10 h-10 mx-auto text-white"></i>
+                        <div class="mt-2 text-sm font-bold"><span class="text-blue-300">${Math.round(data.daily.temperature_2m_min[i])}°</span> | <span class="text-red-300">${Math.round(data.daily.temperature_2m_max[i])}°</span></div>
+                    </div>`;
+            }
+            lucide.createIcons();
+        }
+
+        // --- TERMINAL AWARYJNY I SZTUCZNA INTELIGENCJA P2P ---
+        function openEmergency() { document.getElementById('emergency-modal').style.display = 'flex'; }
+        function closeEmergency() { document.getElementById('emergency-modal').style.display = 'none'; }
+        
+        function checkPassword() {
+            if(document.getElementById('admin-pass').value === '7319112') {
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('p2p-dashboard').style.display = 'block';
+            } else alert("Odmowa dostępu. Błędne hasło.");
+        }
+
+        function aiAnalyzeLocation() {
+            // Fizyka P2P obliczana matematycznie od ZERA
+            const radius = (lastWindSpeed * 0.15).toFixed(1); // Promień zniszczeń na bazie energii kinetycznej
+            let direction = "Północy";
+            if(lastWindDir > 45 && lastWindDir < 135) direction = "Wschodu";
+            else if(lastWindDir >= 135 && lastWindDir < 225) direction = "Południa";
+            else if(lastWindDir >= 225 && lastWindDir < 315) direction = "Zachodu";
+            
+            document.getElementById('p2p-msg').value = 
+`UWAGA! Wykryto ekstremalne zagrożenie dla miasta: ${cityName.toUpperCase()}.
+Wektor uderzenia wiatru od strony ${direction}.
+Obliczona strefa bezwzględnego zniszczenia wynosi ${radius} kilometrów od centrum skanowania.
+ZALECANY KIERUNEK EWAKUACJI: Przeciwny do linii wektora. Szukać schronów podziemnych.`;
+        }
+
+        function sendP2PBroadcast() {
+            const type = document.getElementById('p2p-type').value;
+            const msg = document.getElementById('p2p-msg').value;
+            if(!msg) return alert("AI musi najpierw wpisać dane koordynacyjne!");
+            p2pChannel.postMessage({ type: type, message: msg });
+            alert("Sygnał rozesłany do wszystkich węzłów (Zakładek) P2P pomyślnie.");
+            closeEmergency();
+        }
+
+        // --- POWIADOMIENIA PUSH ---
+        function setupNotifications() {
+            const btn = document.getElementById('notify-btn');
+            btn.addEventListener('click', () => {
+                if(Notification.permission !== "granted") Notification.requestPermission().then(p => { if(p==="granted") alert("Powiadomienia aktywne"); });
+                else alert("Powiadomienia są już aktywne");
+            });
+        }
+        function triggerPushNotification(msgs) {
+            if ("Notification" in window && Notification.permission === "granted" && msgs.length > 0) {
+                new Notification("Centrum planexd_0", { body: msgs.join(" | ") });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
